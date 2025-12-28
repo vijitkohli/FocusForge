@@ -3,6 +3,13 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
+import { PythonShell, Options } from 'python-shell';
+import path from 'path';
+
+// Import the defined contract
+import { DecompositionResult } from '../common/types';
+
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -47,6 +54,34 @@ app.whenReady().then(() => {
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+
+  ipcMain.handle('decompose-task', async (_event, taskTitle) => {
+    console.log('Main Process: Received task:', taskTitle)
+
+    // 1. Path to Virtual Python env
+    const pythonPath = join(process.cwd(), 'engine', 'env', 'bin', 'python')
+
+    // 2. Path to your script
+    const scriptPath = join(process.cwd(), 'engine', 'main.py')
+
+    const options = {
+      mode: 'text' as const,
+      pythonPath: pythonPath,
+      args: [taskTitle]
+    }
+
+    try {
+      // 3. Running the script
+      const results = await PythonShell.run(scriptPath, options)
+      
+      // 4. Taking the first line of output and turning it back into a JS Object
+      return JSON.parse(results[0])
+    } catch (err) {
+      console.error('Python error', err)
+      throw err
+    }
   })
 
   // IPC test

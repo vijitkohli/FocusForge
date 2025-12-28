@@ -27,6 +27,7 @@ export interface Task {
 export interface DecompositionResult {
     originalTask: string;
     subtasks: {
+        id: string,
         title: string;
         difficulty: 'easy' | 'medium' | 'hard';
         timeEstimate: number;
