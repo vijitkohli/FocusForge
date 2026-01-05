@@ -6,7 +6,7 @@ declare global {
     electron: ElectronAPI
     api: {
       // Defining what an API should look like
-      decomposeTask: (taskTitle: string) => Promise<DecompositionResult>
+      decomposeTask: (taskTitle: string, deadline: string, depth: string, selectedModel: string) => Promise<DecompositionResult>
     }
   }
 }

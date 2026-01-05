@@ -4,11 +4,6 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
 import { PythonShell, Options } from 'python-shell';
-import path from 'path';
-
-// Import the defined contract
-import { DecompositionResult } from '../common/types';
-
 
 function createWindow(): void {
   // Create the browser window.
@@ -57,7 +52,7 @@ app.whenReady().then(() => {
   })
 
 
-  ipcMain.handle('decompose-task', async (_event, taskTitle) => {
+  ipcMain.handle('decompose-task', async (_event, taskTitle, deadline, depth, selectedModel) => {
     console.log('Main Process: Received task:', taskTitle)
 
     // 1. Path to Virtual Python env
@@ -69,7 +64,7 @@ app.whenReady().then(() => {
     const options = {
       mode: 'text' as const,
       pythonPath: pythonPath,
-      args: [taskTitle]
+      args: [taskTitle, deadline, depth, selectedModel]
     }
 
     try {

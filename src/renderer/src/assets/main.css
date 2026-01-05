@@ -169,3 +169,203 @@ code {
     display: none;
   }
 }
+
+/* Main Container */
+.app-container {
+  padding: 40px;
+  color: white;
+  font-family: 'Inter', sans-serif;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%; /* Ensure it takes width */
+}
+
+/* Headings */
+.app-title {
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+/* Input Card */
+.input-card {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 30px;
+}
+
+/* Form Groups */
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.input-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+/* Inputs & Selects */
+.input-field,
+.select-field {
+  width: 100%;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #222;
+  color: white;
+  font-size: 1em;
+  box-sizing: border-box;
+}
+
+.input-field:focus,
+.select-field:focus {
+  outline: 2px solid #61dafb;
+  border-color: transparent;
+}
+
+/* Buttons */
+.btn-primary {
+  width: 100%;
+  padding: 15px;
+  cursor: pointer;
+  border-radius: 6px;
+  border: none;
+  background: linear-gradient(90deg, #61dafb, #21a1f1);
+  color: #000;
+  font-weight: bold;
+  font-size: 1.1em;
+  transition: transform 0.1s ease;
+}
+
+.btn-primary:hover {
+  transform: scale(1.01);
+}
+
+.btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Divider */
+.divider {
+  margin: 30px 0;
+  opacity: 0.2;
+  border: 0;
+  border-top: 1px solid white;
+}
+
+/* Error Message */
+.error-box {
+  padding: 15px;
+  background: rgba(255, 76, 76, 0.1);
+  border-left: 4px solid #ff4c4c;
+  color: #ff4c4c;
+  margin-bottom: 20px;
+  border-radius: 0 4px 4px 0;
+}
+
+/* Results Section */
+.results-title {
+  margin-bottom: 20px;
+}
+
+.highlight {
+  color: #61dafb;
+}
+
+.results-list {
+  padding-left: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding-right: 15px;
+}
+
+.result-item {
+  margin-bottom: 15px;
+  list-style: none;
+}
+
+.task-card {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 15px;
+  border-radius: 0 8px 8px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.2s;
+}
+
+.task-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.task-meta {
+  font-size: 0.85em;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.task-title {
+  font-size: 1.1em;
+  display: block;
+}
+
+.difficulty-badge {
+  font-size: 0.8em;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  text-transform: capitalize;
+}
+
+/* Difficulty Colors (Dynamic Border) */
+.border-easy { border-left: 4px solid #1dd1a1; }
+.border-medium { border-left: 4px solid #feca57; }
+.border-hard { border-left: 4px solid #ff6b6b; }
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05); 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444; 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #61dafb;
+}
+
+.task-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #ff0000;
+}
+
+.task-card.completed {
+  opacity: 0.6;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.task-title.strike {
+  text-decoration: line-through;
+  color: #888;
+}

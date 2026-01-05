@@ -9,6 +9,7 @@ export interface Subtask {
     isCompleted: boolean;
     difficulty?: 'easy' | 'medium' | 'hard';
     timeEstimate?: number; // in minutes
+    scheduledDate?: string // YYYY-MM-DD
 }
 
 /**
@@ -26,10 +27,5 @@ export interface Task {
  */
 export interface DecompositionResult {
     originalTask: string;
-    subtasks: {
-        id: string,
-        title: string;
-        difficulty: 'easy' | 'medium' | 'hard';
-        timeEstimate: number;
-    }[];
+    subtasks: Subtask[];
 }

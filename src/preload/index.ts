@@ -4,9 +4,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 // Custom APIs for renderer
 const api = {
   // Bridge function
-  decomposeTask: (taskTitle: string) => {
+  decomposeTask: (taskTitle: string, deadline: string, depth: string, selectedModel: string) => {
     // invokes the listener written in the Main process
-    return ipcRenderer.invoke('decompose-task', taskTitle);
+    return ipcRenderer.invoke('decompose-task', taskTitle, deadline, depth, selectedModel);
   }
 }
 
