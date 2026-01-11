@@ -3,7 +3,10 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
-import { PythonShell, Options } from 'python-shell';
+import { PythonShell } from 'python-shell';
+import { FileSystemManager } from './fs-manager';
+
+const fsManager = new FileSystemManager();
 
 function createWindow(): void {
   // Create the browser window.
@@ -35,6 +38,16 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // Get Projects for Dashboard
+  ipcMain.handle('get-projects', () => {
+    return fsManager.getProjects();
+  });
+
+  // Create a new project
+  ipcMain.handle('create-project', (_event, name) => {
+    return fsManager.createProject(name);
+  });
 }
 
 // This method will be called when Electron has finished

@@ -170,6 +170,122 @@ code {
   }
 }
 
+/* --- DASHBOARD STYLES --- */
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40px;
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); /* Responsive Grid */
+  gap: 20px;
+}
+
+/* Card Styles */
+.project-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 140px;
+}
+
+.project-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
+  border-color: rgba(97, 218, 251, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.card-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #61dafb 0%, #21a1f1 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: #000;
+  margin-bottom: 15px;
+  font-size: 1.2em;
+}
+
+.card-title {
+  font-size: 1.2em;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 5px;
+}
+
+.card-date {
+  font-size: 0.85em;
+  color: #888;
+}
+
+/* Progress Bar */
+.progress-track {
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: #61dafb;
+  height: 100%;
+  /* width is set dynamically in React */
+}
+
+/* States */
+.loading-text {
+  text-align: center;
+  color: #666;
+  margin-top: 50px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 50px;
+}
+.empty-state-text {
+  color: #888;
+}
+
+/* New Input Styles for the Dashboard Header */
+.create-input-group {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-create {
+  background: #61dafb;
+  color: #000;
+  border: none;
+  padding: 0 20px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.btn-create:hover { background: #21a1f1; }
+
+
 /* Main Container */
 .app-container {
   padding: 40px;
@@ -285,14 +401,20 @@ code {
 
 .results-list {
   padding-left: 0;
-  max-height: 50vh;
+  /* Old value was 50vh. New value subtracts the header space so it fits. */
+  max-height: calc(100vh - 550px); 
+  min-height: 200px; /* Ensure it's never too small */
   overflow-y: auto;
   padding-right: 15px;
+  width: 100%;
 }
 
 .result-item {
   margin-bottom: 15px;
   list-style: none;
+}
+.result-item:last-child {
+  margin-bottom: 5vh; 
 }
 
 .task-card {
@@ -342,6 +464,7 @@ code {
 ::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.05); 
   border-radius: 4px;
+  margin-bottom: 5vh;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -368,4 +491,37 @@ code {
 .task-title.strike {
   text-decoration: line-through;
   color: #888;
+}
+
+/* Navigation Header */
+.nav-header {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.nav-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: color 0.2s, text-decoration 0.2s;
+}
+
+.nav-btn:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.nav-divider {
+  margin-left: 5px;
+  margin-right: 5px;
+}
+
+.creator {
+  color: #fff;
 }

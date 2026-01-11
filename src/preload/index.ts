@@ -7,7 +7,10 @@ const api = {
   decomposeTask: (taskTitle: string, deadline: string, depth: string, selectedModel: string) => {
     // invokes the listener written in the Main process
     return ipcRenderer.invoke('decompose-task', taskTitle, deadline, depth, selectedModel);
-  }
+  }, 
+  getProjects: () => ipcRenderer.invoke('get-projects'),
+  
+  createProject: (name: string) => ipcRenderer.invoke('create-project', name)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

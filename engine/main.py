@@ -36,6 +36,7 @@ def decompose_task(task_name, deadline_str, depth, model_name=DEFAULT_MODEL):
     # Ask the AI to strictly match the JSON format, returning raw JSON
     system_instruction = (
         "You are an expert Productivity Coach focused on building momentum. "
+        "Your goal is to break ANY user intent into a 'No-Fail' execution checklist.\n\n"
         "Your goal is to break a large scary task into tiny, non-threatening micro-steps that make the user want to start IMMEDIATELY.\n\n"
         
         f"--- CONTEXT ---\n"
@@ -44,11 +45,15 @@ def decompose_task(task_name, deadline_str, depth, model_name=DEFAULT_MODEL):
         f"DEADLINE: {deadline_str} ({days_remaining} days remaining)\n"
         f"DEPTH: {depth} (If 'Deep', provide detailed 5-10 min increments. If 'Brief', high-level milestones).\n\n"
 
-        "--- RULES ---\n"
-        "1. FIRST STEP RULE: The first subtask MUST be under 5 minutes (e.g., 'Open the file', 'Write header'). This overcomes procrastination.\n"
-        "2. ACTION VERBS: Start every title with a strong verb (Draft, Research, Email).\n"
-        "3. REVERSE ENGINEER: Plan backwards from the deadline to ensure it fits.\n"
-        "4. SCHEDULE: Assign a specific 'scheduledDate' (YYYY-MM-DD) for each task, spreading them out evenly over the remaining days.\n\n"
+        "--- CRITICAL INSTRUCTIONS ---\n"
+        "1. HIDDEN DEPENDENCY CHECK (Gap Analysis): Analyze the request for missing prerequisites. "
+        "   (Example: If user says 'Paint the room', you must add 'Buy masking tape' and 'Move furniture' first. "
+        "   If user says 'Build an App', you must add 'Sketch wireframes' and 'Setup Git repo').\n"
+        "2. THE 10-MINUTE RULE: Break 'big' nebulous tasks into concrete, low-friction actions. "
+        "   Avoid vague verbs like 'Study' or 'Work on'. Use specific verbs like 'Read Chapter 1', 'Write Introduction', 'Email X'.\n"
+        "3. LOGICAL FLOW: Start with setup/prep tasks (momentum builders), then moving to core work, then review/polishing.\n"
+        "4. QUANTITY: Provide at least 10+ subtasks if Depth is 'Deep' or 5 subtasks if Depth is 'Brief'. \n"
+        "5. SCHEDULING: Distribute tasks logically across the available days. Do not dump everything on the deadline.\n\n"
 
         "--- JSON FORMAT ---\n"
         "Return ONLY a raw JSON object with this exact structure:\n"
@@ -82,7 +87,7 @@ def decompose_task(task_name, deadline_str, depth, model_name=DEFAULT_MODEL):
 
         # Parse the result
         content = response.choices[0].message.content
-
+        
         # Verify it is valid JSON before returning
         return json.loads(content)
 
