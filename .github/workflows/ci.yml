@@ -13,13 +13,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # Only the Node/TS side is checked here. The Python engine pulls torch
       # (~2GB), so it's intentionally not built in CI.
+      # `npm install` (not `npm ci`) tolerates the platform-specific optional
+      # native deps (rollup/tailwind wasm fallbacks) that npm doesn't fully
+      # record cross-platform; --ignore-scripts skips the electron-builder
+      # postinstall, which tsc/eslint don't need.
       - name: Install dependencies
-        run: npm ci
+        run: npm install --ignore-scripts
 
       - name: Type check
         run: npm run typecheck
