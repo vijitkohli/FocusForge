@@ -11,9 +11,7 @@ import { ProjectTask, Subtask, UpcomingSubtask, withCompletion } from 'src/commo
  * loadProjectData/saveProjectData with a ledger note, mirroring TaskDetails so
  * context.md and project_data.json never drift.
  */
-export type FocusScope =
-  | { scope: 'global' }
-  | { scope: 'task'; projectId: string; taskId: string }
+export type FocusScope = { scope: 'global' } | { scope: 'task'; projectId: string; taskId: string }
 
 interface FocusModeProps {
   focus: FocusScope
@@ -44,8 +42,7 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): Rea
   const loadQueue = useCallback(async () => {
     try {
       const all = await window.api.getUpcomingSubtasks()
-      const scoped =
-        focus.scope === 'task' ? all.filter((s) => s.taskId === focus.taskId) : all
+      const scoped = focus.scope === 'task' ? all.filter((s) => s.taskId === focus.taskId) : all
       setQueue(scoped)
     } catch (e) {
       console.error('Failed to load focus queue', e)
@@ -111,10 +108,7 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): Rea
             {doneCount} done this session
           </span>
         )}
-        <button
-          onClick={onExit}
-          className="ml-auto text-sm text-fg-2 transition hover:text-fg-1"
-        >
+        <button onClick={onExit} className="ml-auto text-sm text-fg-2 transition hover:text-fg-1">
           Exit focus ✕
         </button>
       </header>
@@ -168,7 +162,9 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): Rea
           <div className="text-center">
             <p className="text-2xl font-semibold tracking-tight">Nothing queued 🎉</p>
             <p className="mt-2 text-sm text-fg-3">
-              {doneCount > 0 ? `You knocked out ${doneCount} step${doneCount === 1 ? '' : 's'} — nice work.` : 'No upcoming steps right now.'}
+              {doneCount > 0
+                ? `You knocked out ${doneCount} step${doneCount === 1 ? '' : 's'} — nice work.`
+                : 'No upcoming steps right now.'}
             </p>
             <button
               onClick={onExit}

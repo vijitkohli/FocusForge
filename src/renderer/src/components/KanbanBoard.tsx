@@ -74,13 +74,17 @@ export function KanbanBoard({ subtasks, onMove }: KanbanBoardProps): React.JSX.E
                   }`}
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${DIFFICULTY_DOT[item.difficulty || 'medium']}`} />
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${DIFFICULTY_DOT[item.difficulty || 'medium']}`}
+                    />
                     <span className="text-xs text-fg-3">
                       {item.scheduledDate}
                       {item.timeEstimate ? ` • ${item.timeEstimate}m` : ''}
                     </span>
                   </div>
-                  <p className={col.status === 'done' ? 'text-fg-3 line-through' : 'text-fg-1'}>{item.title}</p>
+                  <p className={col.status === 'done' ? 'text-fg-3 line-through' : 'text-fg-1'}>
+                    {item.title}
+                  </p>
                 </div>
               ))
             )}

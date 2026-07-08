@@ -8,7 +8,7 @@ const api = {
   // The main process reads context_<projectId>.md server-side - the renderer never
   // carries ledger content itself.
   sendChatMessage: (payload: ChatTurnPayload) => {
-    return ipcRenderer.invoke('chat-turn', payload);
+    return ipcRenderer.invoke('chat-turn', payload)
   },
 
   // Live tokens for the in-progress clarifying question. The promise from
@@ -34,7 +34,17 @@ const api = {
     deadline: string,
     depth: string,
     model: string
-  ) => ipcRenderer.invoke('update-checklist', projectId, taskId, request, currentChecklist, deadline, depth, model),
+  ) =>
+    ipcRenderer.invoke(
+      'update-checklist',
+      projectId,
+      taskId,
+      request,
+      currentChecklist,
+      deadline,
+      depth,
+      model
+    ),
 
   getProjects: () => ipcRenderer.invoke('get-projects'),
 
@@ -43,36 +53,30 @@ const api = {
   saveProjectData: (projectId: string, data: any, notes?: LedgerNote[]) =>
     ipcRenderer.invoke('save-project-data', projectId, data, notes),
 
-  loadProjectData: (projectId: string) =>
-    ipcRenderer.invoke('load-project-data', projectId),
+  loadProjectData: (projectId: string) => ipcRenderer.invoke('load-project-data', projectId),
 
-  deleteProject: (projectId: string) =>
-    ipcRenderer.invoke('delete-project', projectId),
+  deleteProject: (projectId: string) => ipcRenderer.invoke('delete-project', projectId),
 
   deleteTask: (projectId: string, taskId: string) =>
     ipcRenderer.invoke('delete-task', projectId, taskId),
 
   // Read a project's combined context_<projectId>.md ledger (full, untrimmed)
-  readContextLedger: (projectId: string) =>
-    ipcRenderer.invoke('read-context-ledger', projectId),
+  readContextLedger: (projectId: string) => ipcRenderer.invoke('read-context-ledger', projectId),
 
   // Overwrite the ledger with user-edited contents (editable context panel)
   saveContextLedger: (projectId: string, contents: string) =>
     ipcRenderer.invoke('save-context-ledger', projectId, contents),
 
   // Read the global user profile (full, untrimmed — for the editor)
-  readUserProfile: () =>
-    ipcRenderer.invoke('read-user-profile'),
+  readUserProfile: () => ipcRenderer.invoke('read-user-profile'),
 
   // Overwrite the global user profile with user-edited contents
-  saveUserProfile: (contents: string) =>
-    ipcRenderer.invoke('save-user-profile', contents),
+  saveUserProfile: (contents: string) => ipcRenderer.invoke('save-user-profile', contents),
 
   // Nuclear reset: removes all projects, context ledgers, and the user profile.
   // Shows a native confirm dialog before wiping — returns { canceled: true } if
   // the user backs out, { success: true } on completion.
-  resetAllData: () =>
-    ipcRenderer.invoke('reset-all-data'),
+  resetAllData: () => ipcRenderer.invoke('reset-all-data'),
 
   // Tasks across every project, flattened and deadline-sorted, for the
   // dashboard's deadline view

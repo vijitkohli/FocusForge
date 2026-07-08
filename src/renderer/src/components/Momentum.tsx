@@ -65,7 +65,9 @@ export function Momentum(): React.JSX.Element | null {
           <h2 className="text-sm font-medium text-fg-2">Momentum</h2>
           <p className="mt-1 text-3xl font-semibold tracking-tight">
             {stats.currentStreak > 0 ? (
-              <>🔥 {stats.currentStreak} day{stats.currentStreak === 1 ? '' : 's'}</>
+              <>
+                🔥 {stats.currentStreak} day{stats.currentStreak === 1 ? '' : 's'}
+              </>
             ) : (
               <span className="text-fg-3">No streak yet</span>
             )}

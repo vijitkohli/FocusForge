@@ -127,7 +127,10 @@ export function ProjectWorkspace({
         createdAt: new Date().toISOString(),
         deadline,
         subtasks: (response.data?.subtasks ?? []).map((s) => ({ ...s, isCompleted: false })),
-        prerequisites: (response.data?.prerequisites ?? []).map((p) => ({ ...p, isCompleted: false })),
+        prerequisites: (response.data?.prerequisites ?? []).map((p) => ({
+          ...p,
+          isCompleted: false
+        })),
         status: 'in-progress',
         depth,
         model: selectedModel,
@@ -155,7 +158,10 @@ export function ProjectWorkspace({
     setAttaching(true)
     setErrorMessage(null)
     try {
-      const result = await window.api.selectAndExtractDocument(projectId, firstUserMessage || 'task context')
+      const result = await window.api.selectAndExtractDocument(
+        projectId,
+        firstUserMessage || 'task context'
+      )
       if (result?.error) {
         setErrorMessage(result.error)
       } else if (result) {
@@ -293,209 +299,219 @@ export function ProjectWorkspace({
           disabled={loadingContext}
           className="ml-auto rounded-md border border-border px-3 py-1.5 text-xs text-fg-2 transition hover:border-border-strong hover:text-fg-1 disabled:opacity-50"
         >
-          {loadingContext ? 'Loading…' : showContext ? 'Hide Project Context' : 'View Project Context'}
+          {loadingContext
+            ? 'Loading…'
+            : showContext
+              ? 'Hide Project Context'
+              : 'View Project Context'}
         </button>
       </header>
 
       <div className="flex flex-1 justify-center overflow-y-auto">
-      <div className="flex min-h-full w-full max-w-3xl flex-col gap-5 px-6 py-6">
-        {showContext && (
-          <div className="shrink-0 rounded-2xl glass p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-medium text-fg-2">Project Context</span>
+        <div className="flex min-h-full w-full max-w-3xl flex-col gap-5 px-6 py-6">
+          {showContext && (
+            <div className="shrink-0 rounded-2xl glass p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-fg-2">Project Context</span>
+                {editingContext ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditingContext(false)}
+                      className="rounded-md px-3 py-1 text-xs text-fg-2 transition hover:text-fg-1"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveContext}
+                      disabled={savingContext}
+                      className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white transition hover:bg-accent-hover disabled:opacity-50"
+                    >
+                      {savingContext ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={startEditingContext}
+                    className="rounded-md border border-border px-3 py-1 text-xs text-fg-2 transition hover:border-border-strong hover:text-fg-1"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
               {editingContext ? (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setEditingContext(false)}
-                    className="rounded-md px-3 py-1 text-xs text-fg-2 transition hover:text-fg-1"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveContext}
-                    disabled={savingContext}
-                    className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white transition hover:bg-accent-hover disabled:opacity-50"
-                  >
-                    {savingContext ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
+                <textarea
+                  value={contextDraft}
+                  onChange={(e) => setContextDraft(e.target.value)}
+                  spellCheck={false}
+                  className="h-64 w-full resize-none rounded-lg border border-border bg-bg-3 p-3 font-mono text-xs text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
+                />
               ) : (
-                <button
-                  onClick={startEditingContext}
-                  className="rounded-md border border-border px-3 py-1 text-xs text-fg-2 transition hover:border-border-strong hover:text-fg-1"
-                >
-                  Edit
-                </button>
+                <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-fg-2">
+                  {contextLedger.trim()
+                    ? contextLedger
+                    : 'No context recorded yet for this project.'}
+                </pre>
               )}
             </div>
-            {editingContext ? (
-              <textarea
-                value={contextDraft}
-                onChange={(e) => setContextDraft(e.target.value)}
-                spellCheck={false}
-                className="h-64 w-full resize-none rounded-lg border border-border bg-bg-3 p-3 font-mono text-xs text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
-              />
-            ) : (
-              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-fg-2">
-                {contextLedger.trim() ? contextLedger : 'No context recorded yet for this project.'}
-              </pre>
-            )}
-          </div>
-        )}
-
-        <h1 className="shrink-0 text-center text-3xl font-semibold tracking-tight">Flow State</h1>
-
-        {/* SCHEDULING CONTROLS */}
-        <div className="shrink-0 rounded-2xl glass p-4">
-          <div className="grid grid-cols-3 gap-3">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-fg-2">Deadline</span>
-              <input
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-                className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-fg-2">Depth</span>
-              <select
-                value={depth}
-                onChange={(e) => setDepth(e.target.value)}
-                className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
-              >
-                <option value="Brief">Brief (Milestones)</option>
-                <option value="Deep">Deep (Micro-steps)</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-fg-2">Model</span>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
-              >
-                <option value="ollama/llama3.1:8b">Local (Llama 3.1 8B)</option>
-                <option value="gemini/gemini-2.5-flash-lite">Gemini Flash Lite</option>
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        {errorMessage && (
-          <div className="shrink-0 rounded-md border-l-4 border-hard bg-hard/10 px-4 py-3 text-sm text-hard">
-            {errorMessage}
-          </div>
-        )}
-
-        {/* CHAT STREAM */}
-        <div className="flex max-h-[40vh] flex-col gap-3 overflow-y-auto pr-1">
-          {messages.length === 0 && (
-            <div className="max-w-[75%] self-start rounded-2xl rounded-bl-sm bg-bg-2 px-4 py-3 text-sm">
-              What do you need to get done? Tell me anything — big or small.
-            </div>
           )}
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`max-w-[75%] cursor-text select-text rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                m.role === 'user'
-                  ? 'self-end rounded-br-sm bg-accent text-white'
-                  : 'self-start rounded-bl-sm bg-bg-2 text-fg-1'
-              }`}
-            >
-              {m.content}
-            </div>
-          ))}
-          {loading && (
-            <div
-              className={`max-w-[75%] self-start rounded-2xl rounded-bl-sm bg-bg-2 px-4 py-3 text-sm ${
-                streamingText ? 'leading-relaxed text-fg-1' : 'italic text-fg-2'
-              }`}
-            >
-              {streamingText || 'Thinking…'}
-            </div>
-          )}
-          <div ref={streamEndRef} />
-        </div>
 
-        {/* INPUT BAR */}
-        <div className="shrink-0 pb-4 pt-2">
-          {attachedFileName && (
-            <div className="mb-2 inline-flex items-center gap-1.5 rounded-md bg-accent-soft px-3 py-1 text-xs text-accent">
-              📎 {attachedFileName}
-            </div>
-          )}
-          <div className="flex items-center gap-2 rounded-2xl glass p-2">
-            <button
-              onClick={handleAttach}
-              disabled={attaching || loading}
-              title="Attach a document for context"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border text-fg-1 transition hover:border-accent disabled:opacity-50"
-            >
-              {attaching ? '…' : '📎'}
-            </button>
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSend()
-              }}
-              placeholder={messages.length === 0 ? 'e.g. Write 2000 word essay on History' : 'Reply…'}
-              disabled={loading}
-              className="flex-1 bg-transparent px-2 text-sm text-fg-1 placeholder:text-fg-3 focus:outline-none"
-            />
-            <button
-              onClick={handleSend}
-              disabled={loading || !inputText.trim()}
-              className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-50"
-            >
-              Send
-            </button>
-          </div>
-        </div>
+          <h1 className="shrink-0 text-center text-3xl font-semibold tracking-tight">Flow State</h1>
 
-        {/* SAVED HISTORY */}
-        {projectHistory.length > 0 && (
-          <div className="shrink-0 border-t border-border py-4">
-            <h3 className="mb-3 text-sm font-medium text-fg-2">Saved Tasks</h3>
-            <div className="flex max-h-48 flex-col gap-2 overflow-y-auto pr-1">
-              {[...projectHistory].reverse().map((task) => (
-                <div
-                  key={task.id}
-                  className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3"
+          {/* SCHEDULING CONTROLS */}
+          <div className="shrink-0 rounded-2xl glass p-4">
+            <div className="grid grid-cols-3 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs text-fg-2">Deadline</span>
+                <input
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs text-fg-2">Depth</span>
+                <select
+                  value={depth}
+                  onChange={(e) => setDepth(e.target.value)}
+                  className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
                 >
-                  <div className="min-w-0">
-                    <p className="text-xs text-fg-3">Created {new Date(task.createdAt).toLocaleDateString()}</p>
-                    <p className="truncate font-medium">{task.title}</p>
-                    <p className="text-xs text-fg-2">
-                      {task.subtasks.length} sub-steps • {task.status}
-                    </p>
-                  </div>
-                  <div className="ml-3 flex shrink-0 gap-2">
-                    <button
-                      onClick={() => handleViewTask(task)}
-                      className="rounded-md bg-bg-3 px-3 py-1.5 text-xs text-fg-1 transition hover:bg-accent hover:text-white"
-                    >
-                      View
-                    </button>
-                    <button
-                      title="Delete this task"
-                      onClick={(e) => handleDeleteTask(e, task)}
-                      className="rounded-md bg-bg-3 px-3 py-1.5 text-xs text-hard transition hover:bg-hard/15"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  <option value="Brief">Brief (Milestones)</option>
+                  <option value="Deep">Deep (Micro-steps)</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs text-fg-2">Model</span>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
+                >
+                  <option value="ollama/llama3.1:8b">Local (Llama 3.1 8B)</option>
+                  <option value="gemini/gemini-2.5-flash-lite">Gemini Flash Lite</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+                </select>
+              </label>
             </div>
           </div>
-        )}
-      </div>
+
+          {errorMessage && (
+            <div className="shrink-0 rounded-md border-l-4 border-hard bg-hard/10 px-4 py-3 text-sm text-hard">
+              {errorMessage}
+            </div>
+          )}
+
+          {/* CHAT STREAM */}
+          <div className="flex max-h-[40vh] flex-col gap-3 overflow-y-auto pr-1">
+            {messages.length === 0 && (
+              <div className="max-w-[75%] self-start rounded-2xl rounded-bl-sm bg-bg-2 px-4 py-3 text-sm">
+                What do you need to get done? Tell me anything — big or small.
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                className={`max-w-[75%] cursor-text select-text rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                  m.role === 'user'
+                    ? 'self-end rounded-br-sm bg-accent text-white'
+                    : 'self-start rounded-bl-sm bg-bg-2 text-fg-1'
+                }`}
+              >
+                {m.content}
+              </div>
+            ))}
+            {loading && (
+              <div
+                className={`max-w-[75%] self-start rounded-2xl rounded-bl-sm bg-bg-2 px-4 py-3 text-sm ${
+                  streamingText ? 'leading-relaxed text-fg-1' : 'italic text-fg-2'
+                }`}
+              >
+                {streamingText || 'Thinking…'}
+              </div>
+            )}
+            <div ref={streamEndRef} />
+          </div>
+
+          {/* INPUT BAR */}
+          <div className="shrink-0 pb-4 pt-2">
+            {attachedFileName && (
+              <div className="mb-2 inline-flex items-center gap-1.5 rounded-md bg-accent-soft px-3 py-1 text-xs text-accent">
+                📎 {attachedFileName}
+              </div>
+            )}
+            <div className="flex items-center gap-2 rounded-2xl glass p-2">
+              <button
+                onClick={handleAttach}
+                disabled={attaching || loading}
+                title="Attach a document for context"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border text-fg-1 transition hover:border-accent disabled:opacity-50"
+              >
+                {attaching ? '…' : '📎'}
+              </button>
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSend()
+                }}
+                placeholder={
+                  messages.length === 0 ? 'e.g. Write 2000 word essay on History' : 'Reply…'
+                }
+                disabled={loading}
+                className="flex-1 bg-transparent px-2 text-sm text-fg-1 placeholder:text-fg-3 focus:outline-none"
+              />
+              <button
+                onClick={handleSend}
+                disabled={loading || !inputText.trim()}
+                className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+
+          {/* SAVED HISTORY */}
+          {projectHistory.length > 0 && (
+            <div className="shrink-0 border-t border-border py-4">
+              <h3 className="mb-3 text-sm font-medium text-fg-2">Saved Tasks</h3>
+              <div className="flex max-h-48 flex-col gap-2 overflow-y-auto pr-1">
+                {[...projectHistory].reverse().map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs text-fg-3">
+                        Created {new Date(task.createdAt).toLocaleDateString()}
+                      </p>
+                      <p className="truncate font-medium">{task.title}</p>
+                      <p className="text-xs text-fg-2">
+                        {task.subtasks.length} sub-steps • {task.status}
+                      </p>
+                    </div>
+                    <div className="ml-3 flex shrink-0 gap-2">
+                      <button
+                        onClick={() => handleViewTask(task)}
+                        className="rounded-md bg-bg-3 px-3 py-1.5 text-xs text-fg-1 transition hover:bg-accent hover:text-white"
+                      >
+                        View
+                      </button>
+                      <button
+                        title="Delete this task"
+                        onClick={(e) => handleDeleteTask(e, task)}
+                        className="rounded-md bg-bg-3 px-3 py-1.5 text-xs text-hard transition hover:bg-hard/15"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
