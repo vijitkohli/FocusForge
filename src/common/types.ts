@@ -1,9 +1,9 @@
 // src/common/types.ts
 
-export type SubtaskStatus = 'todo' | 'doing' | 'done';
+export type SubtaskStatus = 'todo' | 'doing' | 'done'
 
-const NO_FOLLOWUP_SENTINEL = 'DO NOT ASK FOLLOW UP QUESTIONS';
-const MAX_TITLE_LENGTH = 80;
+const NO_FOLLOWUP_SENTINEL = 'DO NOT ASK FOLLOW UP QUESTIONS'
+const MAX_TITLE_LENGTH = 80
 
 /**
  * Derives a clean, human-readable task title from raw user input.
@@ -14,16 +14,16 @@ const MAX_TITLE_LENGTH = 80;
  * Returns '' if nothing usable remains.
  */
 export function cleanTaskTitle(raw: string): string {
-    if (!raw) return '';
-    // Strip sentinel (case-insensitive) and any trailing punctuation around it
-    let s = raw.replace(new RegExp(`[.!?;:\\s]*${NO_FOLLOWUP_SENTINEL}[.!?;:\\s]*$`, 'i'), '');
-    // Collapse newlines and multiple spaces
-    s = s.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ');
-    // Trim trailing punctuation and whitespace
-    s = s.replace(/[.!?;:\s]+$/, '').trim();
-    if (!s) return '';
-    if (s.length > MAX_TITLE_LENGTH) return s.slice(0, MAX_TITLE_LENGTH).trimEnd() + '…';
-    return s;
+  if (!raw) return ''
+  // Strip sentinel (case-insensitive) and any trailing punctuation around it
+  let s = raw.replace(new RegExp(`[.!?;:\\s]*${NO_FOLLOWUP_SENTINEL}[.!?;:\\s]*$`, 'i'), '')
+  // Collapse newlines and multiple spaces
+  s = s.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ')
+  // Trim trailing punctuation and whitespace
+  s = s.replace(/[.!?;:\s]+$/, '').trim()
+  if (!s) return ''
+  if (s.length > MAX_TITLE_LENGTH) return s.slice(0, MAX_TITLE_LENGTH).trimEnd() + '…'
+  return s
 }
 
 /**
@@ -31,11 +31,10 @@ export function cleanTaskTitle(raw: string): string {
  * `isCompleted` and `completedAt` in lockstep so the (scattered) completion
  * call sites - manual toggle, Start Now, AI mutation reset - can never drift.
  */
-export function withCompletion<T extends { isCompleted: boolean; completedAt?: string; status?: SubtaskStatus }>(
-    subtask: T,
-    isCompleted: boolean
-): T {
-    return setSubtaskStatus(subtask, isCompleted ? 'done' : 'todo');
+export function withCompletion<
+  T extends { isCompleted: boolean; completedAt?: string; status?: SubtaskStatus }
+>(subtask: T, isCompleted: boolean): T {
+  return setSubtaskStatus(subtask, isCompleted ? 'done' : 'todo')
 }
 
 /**
@@ -44,36 +43,38 @@ export function withCompletion<T extends { isCompleted: boolean; completedAt?: s
  * (progress, streaks, burndown, getUpcomingSubtasks), so all three fields must
  * move together: done <=> isCompleted + completedAt; todo/doing <=> incomplete.
  */
-export function setSubtaskStatus<T extends { isCompleted: boolean; completedAt?: string; status?: SubtaskStatus }>(
-    subtask: T,
-    status: SubtaskStatus
-): T {
-    const isCompleted = status === 'done';
-    return {
-        ...subtask,
-        status,
-        isCompleted,
-        completedAt: isCompleted ? subtask.completedAt ?? new Date().toISOString() : undefined
-    };
+export function setSubtaskStatus<
+  T extends { isCompleted: boolean; completedAt?: string; status?: SubtaskStatus }
+>(subtask: T, status: SubtaskStatus): T {
+  const isCompleted = status === 'done'
+  return {
+    ...subtask,
+    status,
+    isCompleted,
+    completedAt: isCompleted ? (subtask.completedAt ?? new Date().toISOString()) : undefined
+  }
 }
 
 /** Derives a column for subtasks saved before `status` existed. */
-export function deriveStatus(subtask: { isCompleted: boolean; status?: SubtaskStatus }): SubtaskStatus {
-    return subtask.status ?? (subtask.isCompleted ? 'done' : 'todo');
+export function deriveStatus(subtask: {
+  isCompleted: boolean
+  status?: SubtaskStatus
+}): SubtaskStatus {
+  return subtask.status ?? (subtask.isCompleted ? 'done' : 'todo')
 }
 
 /**
  * Subtask represents the smallest unit of work.
  */
 export interface Subtask {
-    id: string;
-    title: string;
-    isCompleted: boolean;
-    status?: SubtaskStatus; // kanban column; derived from isCompleted when absent
-    completedAt?: string; // ISO datetime, set when completed, cleared when un-completed
-    difficulty?: 'easy' | 'medium' | 'hard';
-    timeEstimate?: number; // in minutes
-    scheduledDate?: string // YYYY-MM-DD
+  id: string
+  title: string
+  isCompleted: boolean
+  status?: SubtaskStatus // kanban column; derived from isCompleted when absent
+  completedAt?: string // ISO datetime, set when completed, cleared when un-completed
+  difficulty?: 'easy' | 'medium' | 'hard'
+  timeEstimate?: number // in minutes
+  scheduledDate?: string // YYYY-MM-DD
 }
 
 /**
@@ -82,10 +83,10 @@ export interface Subtask {
  * into the flat checklist.
  */
 export interface Prerequisite {
-    id: string;
-    title: string;
-    kind?: 'learn' | 'acquire' | 'setup';
-    isCompleted: boolean;
+  id: string
+  title: string
+  kind?: 'learn' | 'acquire' | 'setup'
+  isCompleted: boolean
 }
 
 /**
@@ -93,9 +94,9 @@ export interface Prerequisite {
  * When the AI is called, this JSON structure is expected.
  */
 export interface DecompositionResult {
-    originalTask: string;
-    subtasks: Subtask[];
-    prerequisites?: Prerequisite[];
+  originalTask: string
+  subtasks: Subtask[]
+  prerequisites?: Prerequisite[]
 }
 
 /**
@@ -104,18 +105,18 @@ export interface DecompositionResult {
  * `completedAt` timestamps - nothing extra is persisted.
  */
 export interface ActivityStats {
-    currentStreak: number;
-    longestStreak: number;
-    countsByDate: Record<string, number>; // 'YYYY-MM-DD' -> # subtasks completed that day
-    totalCompleted: number;
+  currentStreak: number
+  longestStreak: number
+  countsByDate: Record<string, number> // 'YYYY-MM-DD' -> # subtasks completed that day
+  totalCompleted: number
 }
 
 /**
  * ChatMessage: a single turn in the clarification dialogue.
  */
 export interface ChatMessage {
-    role: 'user' | 'assistant';
-    content: string;
+  role: 'user' | 'assistant'
+  content: string
 }
 
 /**
@@ -123,14 +124,14 @@ export interface ChatMessage {
  * Every write to project state names which section it belongs under.
  */
 export type LedgerSection =
-    | 'Constraints & Specifications'
-    | 'Document Excerpts'
-    | 'Milestones & Completed Work'
-    | 'Plan Adjustments';
+  | 'Constraints & Specifications'
+  | 'Document Excerpts'
+  | 'Milestones & Completed Work'
+  | 'Plan Adjustments'
 
 export interface LedgerNote {
-    section: LedgerSection;
-    note: string;
+  section: LedgerSection
+  note: string
 }
 
 /**
@@ -138,14 +139,11 @@ export interface LedgerNote {
  * "Projects Overview" is machine-owned (auto-regenerated on read) and is never
  * a valid target for LLM-emitted notes.
  */
-export type UserProfileSection =
-    | 'About Me'
-    | 'Preferences'
-    | 'Patterns & Friction';
+export type UserProfileSection = 'About Me' | 'Preferences' | 'Patterns & Friction'
 
 export interface UserProfileNote {
-    section: UserProfileSection;
-    note: string;
+  section: UserProfileSection
+  note: string
 }
 
 /**
@@ -155,11 +153,11 @@ export interface UserProfileNote {
  * to context_<projectId>.md by the main process.
  */
 export interface EngineResponse {
-    status: 'clarifying' | 'complete' | 'updated' | 'error';
-    message: string;
-    data: DecompositionResult | null;
-    notes?: LedgerNote[];
-    userNotes?: UserProfileNote[];
+  status: 'clarifying' | 'complete' | 'updated' | 'error'
+  message: string
+  data: DecompositionResult | null
+  notes?: LedgerNote[]
+  userNotes?: UserProfileNote[]
 }
 
 /**
@@ -171,12 +169,12 @@ export interface EngineResponse {
  * than as part of initial intake.
  */
 export interface ChatTurnPayload {
-    projectId: string;
-    messages: ChatMessage[];
-    deadline: string;
-    depth: string;
-    model: string;
-    currentChecklist?: DecompositionResult;
+  projectId: string
+  messages: ChatMessage[]
+  deadline: string
+  depth: string
+  model: string
+  currentChecklist?: DecompositionResult
 }
 
 /**
@@ -184,30 +182,30 @@ export interface ChatTurnPayload {
  * We use this for saving/loading from the JSON file.
  */
 export interface ProjectTask {
-    id: string;
-    title: string;
-    createdAt: string;
-    deadline: string;
-    status: string;
-    depth: string;
-    model: string;
+  id: string
+  title: string
+  createdAt: string
+  deadline: string
+  status: string
+  depth: string
+  model: string
 
-    // Store subtask objects
-    subtasks: Subtask[];
+  // Store subtask objects
+  subtasks: Subtask[]
 
-    // "Learn -> do" phase: things to acquire before the steps start
-    prerequisites?: Prerequisite[];
+  // "Learn -> do" phase: things to acquire before the steps start
+  prerequisites?: Prerequisite[]
 
-    // The dialogue that produced this task, if any
-    conversation?: ChatMessage[];
+  // The dialogue that produced this task, if any
+  conversation?: ChatMessage[]
 }
 
 /**
  * Type definition (JSON structure)
  */
 export interface ProjectData {
-    projectId: string;
-    tasks: ProjectTask[]
+  projectId: string
+  tasks: ProjectTask[]
 }
 
 /**
@@ -215,13 +213,13 @@ export interface ProjectData {
  * deadline view, with deadline math already computed.
  */
 export interface UpcomingTask {
-    projectId: string;
-    projectName: string;
-    taskId: string;
-    taskTitle: string;
-    deadline: string;
-    daysRemaining: number;
-    isComplete: boolean;
+  projectId: string
+  projectName: string
+  taskId: string
+  taskTitle: string
+  deadline: string
+  daysRemaining: number
+  isComplete: boolean
 }
 
 /**
@@ -230,15 +228,15 @@ export interface UpcomingTask {
  * with no `difficulty` set are treated as 'medium' when flattened.
  */
 export interface UpcomingSubtask {
-    projectId: string;
-    projectName: string;
-    taskId: string;
-    taskTitle: string;
-    subtaskId: string;
-    subtaskTitle: string;
-    difficulty: 'easy' | 'medium' | 'hard';
-    timeEstimate?: number;
-    scheduledDate?: string;
-    deadline: string;
-    daysRemaining: number;
+  projectId: string
+  projectName: string
+  taskId: string
+  taskTitle: string
+  subtaskId: string
+  subtaskTitle: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  timeEstimate?: number
+  scheduledDate?: string
+  deadline: string
+  daysRemaining: number
 }

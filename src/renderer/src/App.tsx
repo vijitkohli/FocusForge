@@ -46,13 +46,13 @@ function App() {
           projectId={activeProjectId}
           initialTaskId={activeTaskId ?? undefined}
           onBack={goHome}
-          onStartFocus={(taskId) =>
-            setFocus({ scope: 'task', projectId: activeProjectId, taskId })
-          }
+          onStartFocus={(taskId) => setFocus({ scope: 'task', projectId: activeProjectId, taskId })}
         />
       )
     }
-    return <Dashboard onOpenProject={openProject} onStartNow={() => setFocus({ scope: 'global' })} />
+    return (
+      <Dashboard onOpenProject={openProject} onStartNow={() => setFocus({ scope: 'global' })} />
+    )
   }
 
   return (
@@ -62,7 +62,11 @@ function App() {
         <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-linear-to-br from-accent to-accent-hover text-sm font-bold text-white shadow-lg">
           F
         </div>
-        <RailButton label="Home" active={activeView === 'home' && !activeProjectId} onClick={goHome}>
+        <RailButton
+          label="Home"
+          active={activeView === 'home' && !activeProjectId}
+          onClick={goHome}
+        >
           ⌂
         </RailButton>
         <RailButton label="Start Now" active={false} onClick={() => setFocus({ scope: 'global' })}>
@@ -73,7 +77,11 @@ function App() {
         <RailButton
           label="Profile"
           active={activeView === 'profile'}
-          onClick={() => { setActiveProjectId(null); setActiveTaskId(null); setActiveView('profile') }}
+          onClick={() => {
+            setActiveProjectId(null)
+            setActiveTaskId(null)
+            setActiveView('profile')
+          }}
         >
           ◉
         </RailButton>
@@ -106,9 +114,7 @@ function RailButton({
       title={label}
       aria-label={label}
       className={`flex h-11 w-11 items-center justify-center rounded-lg text-lg transition ${
-        active
-          ? 'bg-accent-soft text-accent'
-          : 'text-fg-2 hover:bg-surface hover:text-fg-1'
+        active ? 'bg-accent-soft text-accent' : 'text-fg-2 hover:bg-surface hover:text-fg-1'
       }`}
     >
       {children}

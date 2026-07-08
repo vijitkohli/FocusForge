@@ -22,7 +22,9 @@ export function UserProfile(): React.JSX.Element {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
   function startEdit() {
     setDraft(contents)
@@ -116,8 +118,8 @@ export function UserProfile(): React.JSX.Element {
           <p className="text-xs text-fg-3">
             Keep the three headings (<code className="text-accent">## About Me</code>,{' '}
             <code className="text-accent">## Preferences</code>,{' '}
-            <code className="text-accent">## Patterns &amp; Friction</code>).
-            The <em>Projects Overview</em> section is auto-generated and shown read-only below.
+            <code className="text-accent">## Patterns &amp; Friction</code>). The{' '}
+            <em>Projects Overview</em> section is auto-generated and shown read-only below.
           </p>
           <textarea
             value={draft}
@@ -125,9 +127,7 @@ export function UserProfile(): React.JSX.Element {
             className="glass w-full rounded-xl px-4 py-3 font-mono text-sm text-fg-1 outline-none focus:ring-1 focus:ring-accent resize-none"
             rows={18}
           />
-          {saveError && (
-            <p className="text-sm text-red-400">{saveError}</p>
-          )}
+          {saveError && <p className="text-sm text-red-400">{saveError}</p>}
           <div className="flex gap-2">
             <button
               onClick={save}
@@ -155,11 +155,15 @@ export function UserProfile(): React.JSX.Element {
         /* Read mode */
         <div className="flex flex-col gap-4">
           <div className="glass rounded-xl px-4 py-3">
-            <pre className="font-mono text-sm text-fg-1 whitespace-pre-wrap">{editable || '(empty — click Edit to add your profile)'}</pre>
+            <pre className="font-mono text-sm text-fg-1 whitespace-pre-wrap">
+              {editable || '(empty — click Edit to add your profile)'}
+            </pre>
           </div>
           {overview && (
             <div className="glass rounded-xl px-4 py-3">
-              <p className="text-xs text-fg-3 mb-2 italic">Auto-generated — refreshed on every AI call</p>
+              <p className="text-xs text-fg-3 mb-2 italic">
+                Auto-generated — refreshed on every AI call
+              </p>
               <pre className="font-mono text-sm text-fg-2 whitespace-pre-wrap">{overview}</pre>
             </div>
           )}
@@ -167,12 +171,15 @@ export function UserProfile(): React.JSX.Element {
       )}
       {/* Danger Zone */}
       <div className="mt-auto pt-6 border-t border-border">
-        <p className="text-xs font-semibold uppercase tracking-widest text-fg-3 mb-3">Danger Zone</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-fg-3 mb-3">
+          Danger Zone
+        </p>
         <div className="glass rounded-xl px-4 py-4 flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-fg-1">Reset app / Erase all data</p>
             <p className="text-xs text-fg-3 mt-0.5">
-              Permanently deletes every project, task, context ledger, and this profile. Cannot be undone.
+              Permanently deletes every project, task, context ledger, and this profile. Cannot be
+              undone.
             </p>
             {resetError && <p className="text-xs text-red-400 mt-1">{resetError}</p>}
           </div>

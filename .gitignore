@@ -9,3 +9,6 @@ engine/.env
 .env
 engine/env
 engine/chroma_db
+
+# Local agent/editor tooling
+.claude
