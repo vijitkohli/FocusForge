@@ -1,0 +1,102 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Dark gray canvas + layers */
+  --color-bg-1: #1f1f1f;
+  --color-bg-2: #272727;
+  --color-bg-3: #343434;
+
+  /* Frosted glass surfaces (translucent — pair with backdrop-blur).
+     Warm cream-alpha over the dark base. */
+  --color-surface: rgba(244, 239, 230, 0.045);
+  --color-surface-strong: rgba(244, 239, 230, 0.07);
+
+  /* Foreground / text — cream/beige */
+  --color-fg-1: #f4efe6;
+  --color-fg-2: rgba(244, 239, 230, 0.62);
+  --color-fg-3: rgba(244, 239, 230, 0.4);
+
+  /* Accent — brand orange */
+  --color-accent: #ff6c3b;
+  --color-accent-hover: #ff835a;
+  --color-accent-soft: rgba(255, 108, 59, 0.16);
+
+  /* Semantic urgency / difficulty */
+  --color-easy: #4ade80;
+  --color-medium: #fbbf24;
+  --color-hard: #f87171;
+
+  /* Borders — soft cream */
+  --color-border: rgba(244, 239, 230, 0.12);
+  --color-border-strong: rgba(244, 239, 230, 0.22);
+
+  /* Tight, mostly-square radii */
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.5rem;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--color-fg-1);
+  overflow: hidden;
+  /* Subtle gradient mesh — calm, low-opacity, the surface panels sit on */
+  background-color: var(--color-bg-1);
+  background-image:
+    radial-gradient(circle at 15% 12%, rgba(255, 108, 59, 0.09), transparent 45%),
+    radial-gradient(circle at 88% 90%, rgba(255, 108, 59, 0.05), transparent 48%);
+  background-attachment: fixed;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Frosted-glass panel — one definition for every card/toolbar/bubble surface */
+@utility glass {
+  background-color: var(--color-surface);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+@utility glass-strong {
+  background-color: var(--color-surface-strong);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Refined scrollbar to match calm theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
+
+/* Date input calendar icon visible on dark bg */
+input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}

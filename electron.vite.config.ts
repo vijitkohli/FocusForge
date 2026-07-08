@@ -1,6 +1,7 @@
 import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   main: {},
@@ -8,9 +9,12 @@ export default defineConfig({
   renderer: {
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
+        '@renderer': resolve('src/renderer/src'),
+        // Lets renderer code import shared modules as `src/common/...` (matches
+        // tsconfig paths). Needed once we import runtime values, not just types.
+        src: resolve('src')
       }
     },
-    plugins: [react()]
+    plugins: [react(), tailwindcss()]
   }
 })

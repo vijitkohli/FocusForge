@@ -4,3 +4,8 @@ out
 .DS_Store
 .eslintcache
 *.log*
+*.tsbuildinfo
+engine/.env
+.env
+engine/env
+engine/chroma_db
