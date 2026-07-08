@@ -1,184 +1,502 @@
-// src/renderer/src/components/ProjectWorkspace.tsx
-import React, { useState } from "react";
-import { DecompositionResult, Subtask } from "src/common/types";
+import React, { useState, useEffect, useRef } from 'react'
+import { ChatMessage, ProjectTask, cleanTaskTitle } from 'src/common/types'
+import { TaskDetail } from './TaskDetails'
 
 interface WorkspaceProps {
-  projectId: string;
-  onBack: () => void;
+  projectId: string
+  initialTaskId?: string
+  onBack: () => void
+  onStartFocus: (taskId: string) => void
 }
 
-export function ProjectWorkspace({ projectId, onBack }: WorkspaceProps): React.JSX.Element {
+export function ProjectWorkspace({
+  projectId,
+  initialTaskId,
+  onBack,
+  onStartFocus
+}: WorkspaceProps): React.JSX.Element {
+  // --- SCHEDULING CONTROLS (explicit, not conversational) ---
+  const [selectedModel, setSelectedModel] = useState('ollama/llama3.1:8b')
+  const [deadline, setDeadline] = useState(new Date().toISOString().split('T')[0])
+  const [depth, setDepth] = useState('Brief')
 
-  // Text in the input box
-  const [taskTitle, setTaskTitle] = useState('');
+  // --- CONVERSATION STATE ---
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [inputText, setInputText] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [streamingText, setStreamingText] = useState('')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // AI model
-  const [selectedModel, setSelectedModel] = useState('gemini/gemini-3-flash-preview'); 
+  // --- ATTACHMENT STATE ---
+  // Extracted text is persisted straight into context.md by the main
+  // process - the renderer only tracks the filename for the chip.
+  const [attachedFileName, setAttachedFileName] = useState<string | null>(null)
+  const [attaching, setAttaching] = useState(false)
 
-  // Deadline and depth input
-  const [deadline, setDeadline] = useState(new Date().toISOString().split('T')[0]);
-  const [depth, setDepth] = useState('Brief');
+  // --- COMPLETION STATE ---
+  const [phase, setPhase] = useState<'chat' | 'complete'>('chat')
+  const [finalTask, setFinalTask] = useState<ProjectTask | null>(null)
 
-  // Data returned from Python
-  const [result, setResult] = useState<DecompositionResult | null>(null);
+  // --- HISTORY STATE ---
+  const [projectHistory, setProjectHistory] = useState<ProjectTask[]>([])
+  const [viewingTask, setViewingTask] = useState<ProjectTask | null>(null)
 
-  // A loading flag for UX
-  const [loading, setLoading] = useState(false);
+  // --- CONTEXT LEDGER VIEWER ---
+  // Read-only view of the single combined context.md this project shares
+  // across all its tasks (assignments, labs, etc).
+  const [showContext, setShowContext] = useState(false)
+  const [contextLedger, setContextLedger] = useState('')
+  const [loadingContext, setLoadingContext] = useState(false)
+  const [editingContext, setEditingContext] = useState(false)
+  const [contextDraft, setContextDraft] = useState('')
+  const [savingContext, setSavingContext] = useState(false)
 
-  // State for subtasks list
-  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
-  // Error message
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const streamEndRef = useRef<HTMLDivElement>(null)
 
-  // Decompose using arguments
-  const handleDecompose = async (): Promise<void> => {
-    if (!taskTitle) return;
-
-    setLoading(true);
-    setErrorMessage(null); 
-    setResult(null);
-    setSubtasks([]);
-
-  try {
-      // @ts-ignore
-      const data = await window.api.decomposeTask(taskTitle, deadline, depth, selectedModel);
-      
-      if (data.subtasks && data.subtasks[0].id !== 'error') {
-        setResult(data);
-        setSubtasks(data.subtasks.map((s: any) => ({ ...s, isCompleted: false })));
-      } else {
-        setErrorMessage("AI Generation Failed.");
+  // --- LOAD HISTORY ON MOUNT ---
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const data = await window.api.loadProjectData(projectId)
+        if (data && data.tasks) {
+          setProjectHistory(data.tasks)
+          if (initialTaskId) {
+            const target = data.tasks.find((t: ProjectTask) => t.id === initialTaskId)
+            if (target) setViewingTask(target)
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load history', e)
       }
+    }
+    loadData()
+  }, [projectId, initialTaskId])
+
+  useEffect(() => {
+    streamEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading, streamingText])
+
+  // Live tokens for the clarifying question being generated.
+  useEffect(() => window.api.onChatStream((text) => setStreamingText((prev) => prev + text)), [])
+
+  // --- HANDLERS ---
+
+  const firstUserMessage = messages.find((m) => m.role === 'user')?.content ?? ''
+
+  const handleSend = async (): Promise<void> => {
+    if (!inputText.trim() || loading) return
+
+    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: inputText }]
+    setMessages(nextMessages)
+    setInputText('')
+    setLoading(true)
+    setStreamingText('')
+    setErrorMessage(null)
+
+    try {
+      const response = await window.api.sendChatMessage({
+        projectId,
+        messages: nextMessages,
+        deadline,
+        depth,
+        model: selectedModel
+      })
+
+      // Engine-level problem (e.g. missing API key). Surface the message as a
+      // banner and drop the optimistic user bubble so they can retry.
+      if (response.status === 'error') {
+        setMessages(messages)
+        setErrorMessage(response.message)
+        return
+      }
+
+      if (response.status === 'clarifying') {
+        setMessages([...nextMessages, { role: 'assistant', content: response.message }])
+        return
+      }
+
+      // status === 'complete'
+      setMessages([...nextMessages, { role: 'assistant', content: response.message }])
+
+      const newTask: ProjectTask = {
+        id: Date.now().toString(),
+        title:
+          cleanTaskTitle(firstUserMessage) ||
+          cleanTaskTitle(response.data?.originalTask ?? '') ||
+          'Untitled task',
+        createdAt: new Date().toISOString(),
+        deadline,
+        subtasks: (response.data?.subtasks ?? []).map((s) => ({ ...s, isCompleted: false })),
+        prerequisites: (response.data?.prerequisites ?? []).map((p) => ({ ...p, isCompleted: false })),
+        status: 'in-progress',
+        depth,
+        model: selectedModel,
+        conversation: [...nextMessages, { role: 'assistant', content: response.message }]
+      }
+
+      const currentFile = (await window.api.loadProjectData(projectId)) || { tasks: [] }
+      if (!currentFile.tasks) currentFile.tasks = []
+      currentFile.tasks.push(newTask)
+      await window.api.saveProjectData(projectId, currentFile)
+
+      setProjectHistory((prev) => [...prev, newTask])
+      setFinalTask(newTask)
+      setPhase('complete')
     } catch (error) {
-      setErrorMessage("System Error.");
+      console.error(error)
+      setErrorMessage('System Error. Please try again.')
     } finally {
-      setLoading(false);
+      setLoading(false)
+      setStreamingText('')
     }
   }
-  
-  const toggleTask = (id: string) => {
-    setSubtasks(prev => prev.map(task => 
-      task.id === id ? { ...task, isCompleted: !task.isCompleted } : task
-    ));
+
+  const handleAttach = async (): Promise<void> => {
+    setAttaching(true)
+    setErrorMessage(null)
+    try {
+      const result = await window.api.selectAndExtractDocument(projectId, firstUserMessage || 'task context')
+      if (result?.error) {
+        setErrorMessage(result.error)
+      } else if (result) {
+        setAttachedFileName(result.fileName)
+      }
+    } catch (error) {
+      console.error(error)
+      setErrorMessage("Couldn't read that document.")
+    } finally {
+      setAttaching(false)
+    }
+  }
+
+  const handleNewTask = (): void => {
+    setMessages([])
+    setInputText('')
+    setAttachedFileName(null)
+    setFinalTask(null)
+    setPhase('chat')
+    setErrorMessage(null)
+  }
+
+  const handleViewTask = (task: ProjectTask) => setViewingTask(task)
+
+  const handleDeleteTask = async (e: React.MouseEvent, task: ProjectTask): Promise<void> => {
+    e.stopPropagation()
+    if (!window.confirm(`Delete "${task.title}"? This can't be undone.`)) return
+
+    try {
+      await window.api.deleteTask(projectId, task.id)
+      setProjectHistory((prev) => prev.filter((t) => t.id !== task.id))
+    } catch (e) {
+      console.error('Failed to delete task', e)
+    }
+  }
+
+  const handleToggleContext = async (): Promise<void> => {
+    if (showContext) {
+      setShowContext(false)
+      setEditingContext(false)
+      return
+    }
+    setLoadingContext(true)
+    try {
+      const ledger = await window.api.readContextLedger(projectId)
+      setContextLedger(ledger)
+      setShowContext(true)
+    } catch (e) {
+      console.error('Failed to load context ledger', e)
+    } finally {
+      setLoadingContext(false)
+    }
+  }
+
+  const REQUIRED_HEADINGS = [
+    'Constraints & Specifications',
+    'Document Excerpts',
+    'Milestones & Completed Work',
+    'Plan Adjustments'
+  ]
+
+  const startEditingContext = (): void => {
+    setContextDraft(contextLedger)
+    setEditingContext(true)
+  }
+
+  const handleSaveContext = async (): Promise<void> => {
+    const missing = REQUIRED_HEADINGS.filter((h) => !contextDraft.includes(`## ${h}`))
+    if (
+      missing.length > 0 &&
+      !window.confirm(
+        `These section headings are missing and auto-notes may duplicate them:\n\n${missing
+          .map((h) => `## ${h}`)
+          .join('\n')}\n\nSave anyway?`
+      )
+    ) {
+      return
+    }
+
+    setSavingContext(true)
+    try {
+      await window.api.saveContextLedger(projectId, contextDraft)
+      setContextLedger(contextDraft)
+      setEditingContext(false)
+    } catch (e) {
+      console.error('Failed to save context ledger', e)
+    } finally {
+      setSavingContext(false)
+    }
+  }
+
+  const handleCloseTaskDetail = async () => {
+    setViewingTask(null)
+    try {
+      const data = await window.api.loadProjectData(projectId)
+      if (data && data.tasks) setProjectHistory(data.tasks)
+    } catch (e) {
+      console.error('Failed to refresh history', e)
+    }
+  }
+
+  if (viewingTask) {
+    return (
+      <TaskDetail
+        task={viewingTask}
+        projectId={projectId}
+        onBack={handleCloseTaskDetail}
+        onStartFocus={() => onStartFocus(viewingTask.id)}
+      />
+    )
+  }
+
+  if (phase === 'complete' && finalTask) {
+    return (
+      <TaskDetail
+        task={finalTask}
+        projectId={projectId}
+        onBack={handleNewTask}
+        onStartFocus={() => onStartFocus(finalTask.id)}
+      />
+    )
   }
 
   return (
-      <div className="app-container">
-        
-        {/* NAVIGATION HEADER */}
-        {/* We use CSS classes here instead of inline styles */}
-        <div className="nav-header">
-            <button onClick={onBack} className="nav-btn">
-                ← Back to Dashboard
-            </button>
-            
-            <span className="nav-divider">|</span>
-            
-            {/* Reuse existing .creator class for the project name style */}
-            <span className="creator" style={{ marginBottom: 0 }}>
-                {projectId.replace(/_/g, ' ')}
-            </span>
-        </div>
-        
-        <h1 className="app-title">Flow State OS</h1>
+    <div className="flex h-full flex-col">
+      {/* TOP NAV */}
+      <header className="flex shrink-0 items-center gap-3 border-b border-border px-6 py-3.5">
+        <button onClick={onBack} className="text-sm text-fg-2 transition hover:text-fg-1">
+          ← Dashboard
+        </button>
+        <span className="text-fg-3">/</span>
+        <span className="text-sm font-medium">{projectId.replace(/_/g, ' ')}</span>
+        <button
+          onClick={handleToggleContext}
+          disabled={loadingContext}
+          className="ml-auto rounded-md border border-border px-3 py-1.5 text-xs text-fg-2 transition hover:border-border-strong hover:text-fg-1 disabled:opacity-50"
+        >
+          {loadingContext ? 'Loading…' : showContext ? 'Hide Project Context' : 'View Project Context'}
+        </button>
+      </header>
 
-        {/* INPUT CARD */}
-        <div className="input-card">
-          
-          {/* Row 1: The Task */}
-          <div className="form-group">
-              <label className="input-label">What do you need to do?</label>
-              <input
-                className="input-field"
-                type="text"
-                value={taskTitle}
-                onChange={(e) => setTaskTitle(e.target.value)}
-                placeholder="e.g. Write 2000 word essay"
+      <div className="flex flex-1 justify-center overflow-y-auto">
+      <div className="flex min-h-full w-full max-w-3xl flex-col gap-5 px-6 py-6">
+        {showContext && (
+          <div className="shrink-0 rounded-2xl glass p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-medium text-fg-2">Project Context</span>
+              {editingContext ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditingContext(false)}
+                    className="rounded-md px-3 py-1 text-xs text-fg-2 transition hover:text-fg-1"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveContext}
+                    disabled={savingContext}
+                    className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white transition hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {savingContext ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={startEditingContext}
+                  className="rounded-md border border-border px-3 py-1 text-xs text-fg-2 transition hover:border-border-strong hover:text-fg-1"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            {editingContext ? (
+              <textarea
+                value={contextDraft}
+                onChange={(e) => setContextDraft(e.target.value)}
+                spellCheck={false}
+                className="h-64 w-full resize-none rounded-lg border border-border bg-bg-3 p-3 font-mono text-xs text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
               />
+            ) : (
+              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-fg-2">
+                {contextLedger.trim() ? contextLedger : 'No context recorded yet for this project.'}
+              </pre>
+            )}
           </div>
+        )}
 
-          {/* Row 2: The Settings */}
-          <div className="form-grid">
-              <div>
-                  <label className="input-label">Deadline</label>
-                  <input 
-                      className="input-field"
-                      type="date" 
-                      value={deadline}
-                      onChange={(e) => setDeadline(e.target.value)}
-                  />
-              </div>
-              <div>
-                  <label className="input-label">Depth</label>
-                  <select 
-                      className="select-field"
-                      value={depth}
-                      onChange={(e) => setDepth(e.target.value)}
-                  >
-                      <option value="Brief">Brief (Milestones)</option>
-                      <option value="Deep">Deep (Micro-steps)</option>
-                  </select>
-              </div>
-              <div>
-                  <label className="input-label">Model</label>
-                  <select 
-                      className="select-field"
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                  >
-                      <option value="gemini/gemini-3-flash-preview">Gemini Flash</option>
-                      <option value="gpt-4o">GPT-4o</option>
-                  </select>
-              </div>
+        <h1 className="shrink-0 text-center text-3xl font-semibold tracking-tight">Flow State</h1>
+
+        {/* SCHEDULING CONTROLS */}
+        <div className="shrink-0 rounded-2xl glass p-4">
+          <div className="grid grid-cols-3 gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-fg-2">Deadline</span>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-fg-2">Depth</span>
+              <select
+                value={depth}
+                onChange={(e) => setDepth(e.target.value)}
+                className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
+              >
+                <option value="Brief">Brief (Milestones)</option>
+                <option value="Deep">Deep (Micro-steps)</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-fg-2">Model</span>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
+              >
+                <option value="ollama/llama3.1:8b">Local (Llama 3.1 8B)</option>
+                <option value="gemini/gemini-2.5-flash-lite">Gemini Flash Lite</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+              </select>
+            </label>
           </div>
-
-          {/* Action Button */}
-          <button
-            className="btn-primary"
-            onClick={handleDecompose}
-            disabled={loading}
-          >
-            {loading ? 'Generating Plan...' : 'Ignite Momentum'}
-          </button>
         </div>
 
-        <hr className="divider" /> 
-
-        {/* ERROR MESSAGE */}
         {errorMessage && (
-          <div className="error-box">
+          <div className="shrink-0 rounded-md border-l-4 border-hard bg-hard/10 px-4 py-3 text-sm text-hard">
             {errorMessage}
           </div>
         )}
 
-        {/* RESULTS LIST */}
-        {subtasks.length > 0 && (
-          <div className="results-section">
-            <h3 className="results-title">Plan for: <span className="highlight">{result?.originalTask}</span></h3>
-            
-            <ul className="results-list">
-              {subtasks.map((item) => (
-                <li key={item.id} className="result-item">
-                  <div className={`task-card border-${item.difficulty || 'medium'} ${item.isCompleted ? 'completed' : ''}`}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={item.isCompleted} 
-                        onChange={() => toggleTask(item.id)}
-                        className="task-checkbox"
-                      />
-                      <div>
-                        <div className="task-meta">{item.scheduledDate} • {item.timeEstimate} min</div>
-                        <strong className={`task-title ${item.isCompleted ? 'strike' : ''}`}>{item.title}</strong>
-                      </div>
-                    </div>
-                    <span className="difficulty-badge">{item.difficulty}</span>
+        {/* CHAT STREAM */}
+        <div className="flex max-h-[40vh] flex-col gap-3 overflow-y-auto pr-1">
+          {messages.length === 0 && (
+            <div className="max-w-[75%] self-start rounded-2xl rounded-bl-sm bg-bg-2 px-4 py-3 text-sm">
+              What do you need to get done? Tell me anything — big or small.
+            </div>
+          )}
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={`max-w-[75%] cursor-text select-text rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                m.role === 'user'
+                  ? 'self-end rounded-br-sm bg-accent text-white'
+                  : 'self-start rounded-bl-sm bg-bg-2 text-fg-1'
+              }`}
+            >
+              {m.content}
+            </div>
+          ))}
+          {loading && (
+            <div
+              className={`max-w-[75%] self-start rounded-2xl rounded-bl-sm bg-bg-2 px-4 py-3 text-sm ${
+                streamingText ? 'leading-relaxed text-fg-1' : 'italic text-fg-2'
+              }`}
+            >
+              {streamingText || 'Thinking…'}
+            </div>
+          )}
+          <div ref={streamEndRef} />
+        </div>
+
+        {/* INPUT BAR */}
+        <div className="shrink-0 pb-4 pt-2">
+          {attachedFileName && (
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-md bg-accent-soft px-3 py-1 text-xs text-accent">
+              📎 {attachedFileName}
+            </div>
+          )}
+          <div className="flex items-center gap-2 rounded-2xl glass p-2">
+            <button
+              onClick={handleAttach}
+              disabled={attaching || loading}
+              title="Attach a document for context"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border text-fg-1 transition hover:border-accent disabled:opacity-50"
+            >
+              {attaching ? '…' : '📎'}
+            </button>
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSend()
+              }}
+              placeholder={messages.length === 0 ? 'e.g. Write 2000 word essay on History' : 'Reply…'}
+              disabled={loading}
+              className="flex-1 bg-transparent px-2 text-sm text-fg-1 placeholder:text-fg-3 focus:outline-none"
+            />
+            <button
+              onClick={handleSend}
+              disabled={loading || !inputText.trim()}
+              className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-50"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+
+        {/* SAVED HISTORY */}
+        {projectHistory.length > 0 && (
+          <div className="shrink-0 border-t border-border py-4">
+            <h3 className="mb-3 text-sm font-medium text-fg-2">Saved Tasks</h3>
+            <div className="flex max-h-48 flex-col gap-2 overflow-y-auto pr-1">
+              {[...projectHistory].reverse().map((task) => (
+                <div
+                  key={task.id}
+                  className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs text-fg-3">Created {new Date(task.createdAt).toLocaleDateString()}</p>
+                    <p className="truncate font-medium">{task.title}</p>
+                    <p className="text-xs text-fg-2">
+                      {task.subtasks.length} sub-steps • {task.status}
+                    </p>
                   </div>
-                </li>
+                  <div className="ml-3 flex shrink-0 gap-2">
+                    <button
+                      onClick={() => handleViewTask(task)}
+                      className="rounded-md bg-bg-3 px-3 py-1.5 text-xs text-fg-1 transition hover:bg-accent hover:text-white"
+                    >
+                      View
+                    </button>
+                    <button
+                      title="Delete this task"
+                      onClick={(e) => handleDeleteTask(e, task)}
+                      className="rounded-md bg-bg-3 px-3 py-1.5 text-xs text-hard transition hover:bg-hard/15"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
       </div>
-    )
-  }
+      </div>
+    </div>
+  )
+}

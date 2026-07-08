@@ -1,0 +1,18 @@
+# Python engine dependencies. Install via `npm run setup:engine`
+# (creates engine/env and installs these), or manually:
+#   python3 -m venv engine/env
+#   engine/env/bin/pip install -r engine/requirements.txt
+#
+# Versions pinned to the known-good set. torch/sentence-transformers had a
+# native-lib link break on macOS at one point; if imports fail, run:
+#   engine/env/bin/pip install --force-reinstall torch sentence-transformers
+
+litellm==1.80.11
+python-dotenv==1.2.1
+pypdf==6.5.0
+
+# Document relevance-filtering pipeline (PDF attach). Heavy (~2GB with torch);
+# required for engine/extract.py + vault.py.
+chromadb==1.4.0
+sentence-transformers==5.1.2
+torch==2.8.0
