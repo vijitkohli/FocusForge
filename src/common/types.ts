@@ -63,6 +63,70 @@ export function deriveStatus(subtask: {
   return subtask.status ?? (subtask.isCompleted ? 'done' : 'todo')
 }
 
+/** Normalizes a title for fuzzy matching across an AI plan rewrite. */
+function normalizeTitle(title: string): string {
+  return (title || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?;:,]+$/, '')
+    .trim()
+}
+
+/**
+ * An AI plan mutation returns a full replacement checklist, which otherwise
+ * discards the user's completion/board progress. This reconciles the incoming
+ * subtasks against the previous ones by (normalized) title so any step that
+ * still exists keeps its done/doing state and original `completedAt`. New or
+ * renamed steps start fresh as `todo`. Each previous step is consumed once so
+ * duplicate titles can't be double-claimed.
+ */
+export function reconcileSubtasks(previous: Subtask[], incoming: Subtask[]): Subtask[] {
+  const pool = new Map<string, Subtask[]>()
+  for (const prev of previous) {
+    const key = normalizeTitle(prev.title)
+    const bucket = pool.get(key) ?? []
+    bucket.push(prev)
+    pool.set(key, bucket)
+  }
+
+  return incoming.map((next) => {
+    const bucket = pool.get(normalizeTitle(next.title))
+    if (bucket && bucket.length > 0) {
+      // Prefer carrying over a completed match before an incomplete one.
+      bucket.sort((a, b) => Number(b.isCompleted) - Number(a.isCompleted))
+      const prev = bucket.shift() as Subtask
+      const carried = setSubtaskStatus({ ...next }, deriveStatus(prev))
+      if (prev.completedAt) carried.completedAt = prev.completedAt
+      return carried
+    }
+    return withCompletion({ ...next }, false)
+  })
+}
+
+/** Same reconciliation for prerequisites (completion only, no board status). */
+export function reconcilePrerequisites(
+  previous: Prerequisite[],
+  incoming: Prerequisite[]
+): Prerequisite[] {
+  const pool = new Map<string, Prerequisite[]>()
+  for (const prev of previous) {
+    const key = normalizeTitle(prev.title)
+    const bucket = pool.get(key) ?? []
+    bucket.push(prev)
+    pool.set(key, bucket)
+  }
+
+  return incoming.map((next) => {
+    const bucket = pool.get(normalizeTitle(next.title))
+    if (bucket && bucket.length > 0) {
+      bucket.sort((a, b) => Number(b.isCompleted) - Number(a.isCompleted))
+      const prev = bucket.shift() as Prerequisite
+      return { ...next, isCompleted: prev.isCompleted }
+    }
+    return { ...next, isCompleted: false }
+  })
+}
+
 /**
  * Subtask represents the smallest unit of work.
  */

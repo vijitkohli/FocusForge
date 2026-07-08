@@ -6,7 +6,7 @@ import icon from '../../resources/icon.png?asset'
 
 import { PythonShell } from 'python-shell'
 import { FileSystemManager } from './fs-manager'
-import { withCompletion } from '../common/types'
+import { reconcileSubtasks, reconcilePrerequisites } from '../common/types'
 
 const fsManager = new FileSystemManager()
 
@@ -368,11 +368,13 @@ app.whenReady().then(() => {
         const file = (await fsManager.loadProjectData(projectId)) || { tasks: [] }
         const task = (file.tasks ?? []).find((t: any) => t.id === taskId)
         if (task) {
-          task.subtasks = response.data.subtasks.map((s: any) => withCompletion({ ...s }, false))
-          task.prerequisites = (response.data.prerequisites ?? []).map((p: any) => ({
-            ...p,
-            isCompleted: false
-          }))
+          // Carry over completion/board progress for steps that survive the
+          // rewrite, so an AI plan adjustment doesn't wipe what's already done.
+          task.subtasks = reconcileSubtasks(task.subtasks ?? [], response.data.subtasks ?? [])
+          task.prerequisites = reconcilePrerequisites(
+            task.prerequisites ?? [],
+            response.data.prerequisites ?? []
+          )
         }
 
         await fsManager.saveProjectData(projectId, file, response.notes)
