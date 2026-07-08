@@ -1,4 +1,4 @@
-# uni-agent — Flow State OS
+# FocusForge
 
 An Electron desktop app for beating procrastination. An AI coach breaks any task
 into steps small enough that starting feels easy, with gamified momentum
