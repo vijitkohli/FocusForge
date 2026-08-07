@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { ProjectTask, Subtask, UpcomingSubtask, withCompletion } from 'src/common/types'
+import { Subtask, UpcomingSubtask, withCompletion } from 'src/common/types'
+import { updateTask } from '../lib/updateTask'
 
 /**
  * "Start Now" single-action mode. Surfaces exactly ONE next micro-step at a
@@ -62,26 +63,20 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): Rea
     if (!current || saving) return
     setSaving(true)
     try {
-      const file = (await window.api.loadProjectData(current.projectId)) || { tasks: [] }
-      if (!file.tasks) file.tasks = []
-
-      file.tasks = file.tasks.map((t: ProjectTask) =>
-        t.id === current.taskId
-          ? {
-              ...t,
-              subtasks: t.subtasks.map((s: Subtask) =>
-                s.id === current.subtaskId ? withCompletion(s, true) : s
-              )
-            }
-          : t
-      )
-
-      await window.api.saveProjectData(current.projectId, file, [
+      await updateTask(
+        current.projectId,
+        current.taskId,
+        (t) => ({
+          ...t,
+          subtasks: t.subtasks.map((s: Subtask) =>
+            s.id === current.subtaskId ? withCompletion(s, true) : s
+          )
+        }),
         {
           section: 'Milestones & Completed Work',
           note: `Completed "${current.subtaskTitle}" from Start Now.`
         }
-      ])
+      )
 
       // Drop it from the local queue and bump momentum.
       setQueue((prev) => prev.filter((s) => s.subtaskId !== current.subtaskId))

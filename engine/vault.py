@@ -1,9 +1,8 @@
 # engine/vault.py
-# Reusable PDF extraction + relevance-filtering helpers.
-# The standalone __main__ path below still demonstrates ingestion into the
-# permanent "user_knowledge" collection, but engine/extract.py (the live
-# pipeline) uses extract_pages()/relevant_chunks() against a transient
-# collection instead, so unrelated documents never mix.
+# Reusable PDF extraction + relevance-filtering helpers used by the live
+# pipeline (engine/extract.py): extract_pages() reads a PDF, relevant_chunks()
+# embeds it into a transient Chroma collection and returns the top matches,
+# then drops the collection so unrelated documents never mix.
 
 import os
 import uuid
@@ -62,44 +61,3 @@ def relevant_chunks(pages, query, n=5):
         return results["documents"][0]
     finally:
         client.delete_collection(collection_name)
-
-
-def ingest_pdf(file_path):
-    """
-    Reads a PDF and saves it permanently to the shared "user_knowledge"
-    collection. Standalone/manual use only - not part of the live pipeline.
-    """
-    print(f"Reading {file_path}")
-
-    try:
-        pages = extract_pages(file_path)
-    except FileNotFoundError:
-        print("FILE NOT FOUND!!")
-        return
-
-    if not pages:
-        print("NO TEXT FOUND IN PDF!!")
-        return
-
-    print(f"GENERATING EMBEDDINGS FOR {len(pages)} PAGES")
-
-    client = chromadb.PersistentClient(path=DB_DIR)
-    collection = client.get_or_create_collection(
-        name="user_knowledge",
-        embedding_function=_embed_fn
-    )
-    collection.add(
-        documents=pages,
-        metadatas=[{"source": file_path, "page": i + 1} for i in range(len(pages))],
-        ids=[f"{os.path.basename(file_path)}_page_{i}" for i in range(len(pages))]
-    )
-    print("SUCCESS!! DATA STORED SUCCESSFULLY")
-
-
-if __name__ == "__main__":
-    test_pdf = "test_notes.pdf"
-
-    if os.path.exists(test_pdf):
-        ingest_pdf(test_pdf)
-    else:
-        print(f"PLACE A FILE NAMED {test_pdf} IN THIS FOLDER!!")

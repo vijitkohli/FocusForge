@@ -157,36 +157,36 @@ def _sanitize_user_notes(raw_notes):
     return clean
 
 
-def run_clarification_phase(messages, deadline_str, days_remaining, context_ledger, user_profile, model_name):
+def extract_turn_notes(messages, deadline_str, days_remaining, context_ledger, user_profile, model_name):
     """
-    Strategic-coach pass. Looks for critical gaps (grading criteria, required
-    tech, dependencies, personal friction) and asks exactly one targeted
-    question, or signals readiness to move to execution. Also recognizes any
-    durable facts (constraints, specs, stated milestones) worth recording,
-    including durable user-level facts for the global profile.
+    Fact-extraction pass for a conversation turn. The clarifying question is
+    streamed as plain prose (see run_clarification_streaming), which can't also
+    emit structured notes — so this separate, cheap structured call recovers any
+    durable facts the user stated this turn:
+      - Project facts (constraints/specs, work already done) -> `notes`
+      - Durable user-level facts (preferences, working-style, friction) -> `userNotes`
+    Returns (notes, userNotes), each sanitized to known section headings and
+    possibly empty. Runs AFTER the question is emitted so it never adds latency
+    to the reply the user sees.
     """
     transcript = _conversation_transcript(messages)
     profile_block = _user_profile_block(user_profile)
     ledger_block = _ledger_block(context_ledger)
 
     system_instruction = (
-        "You are an expert Productivity Coach conducting a short intake conversation "
-        "before breaking a task down into a 'No-Fail' execution checklist.\n\n"
-        "Your job right now is NOT to produce the checklist. Your job is to find the "
-        "single most important missing piece of information and ask ONE specific, "
-        "open-ended question to get it.\n\n"
-        "Look for gaps such as: grading criteria or success definition, required tools "
-        "or technology, hidden dependencies or prerequisites, scope boundaries, and "
-        "personal friction points (what's actually making this feel hard to start).\n\n"
-        "If you already have enough to build a genuinely useful, specific checklist, "
-        "stop asking questions and signal readiness instead.\n\n"
-        "Separately, check the conversation for any durable facts worth permanently recording:\n"
-        "  1. Project facts: a constraint/spec the user stated, or work they say is already done → `notes`.\n"
-        "  2. User facts: a lasting preference, working-style trait, or friction pattern the user reveals "
-        "     about THEMSELVES (not about this specific task) → `userNotes`. "
-        "     Only capture genuinely durable user-level insights (e.g. 'I always stall on the first paragraph', "
-        "     'I prefer short focused sessions'). Do NOT record task-specific details here.\n"
-        "Do NOT invent facts — only record what was explicitly stated this turn.\n\n"
+        "You are analyzing an ongoing productivity-coaching conversation to extract "
+        "durable facts worth permanently recording. You are NOT asking questions or "
+        "building a checklist here.\n\n"
+        "Extract two kinds of facts:\n"
+        "  1. Project facts: a constraint/spec the user stated, or work they say is "
+        "     already done → `notes`.\n"
+        "  2. User facts: a lasting preference, working-style trait, or friction pattern "
+        "     the user reveals about THEMSELVES (not about this specific task) → "
+        "     `userNotes`. Only genuinely durable user-level insights (e.g. 'I always "
+        "     stall on the first paragraph', 'I prefer short focused sessions'). Do NOT "
+        "     record task-specific details here.\n"
+        "Do NOT invent facts — only record what was explicitly stated in the "
+        "conversation and is not already in the ledger/profile below.\n\n"
         f"{profile_block}"
         f"--- CONTEXT ---\n"
         f"DEADLINE: {deadline_str} ({days_remaining} days remaining)\n"
@@ -196,32 +196,28 @@ def run_clarification_phase(messages, deadline_str, days_remaining, context_ledg
         "--- JSON FORMAT ---\n"
         "Return ONLY a raw JSON object with this exact structure:\n"
         "{\n"
-        '  "action": "ask" | "ready",\n'
-        '  "question": "string (your next question if action is ask, otherwise a short closing remark)",\n'
         '  "notes": [{"section": "Constraints & Specifications" | "Milestones & Completed Work", "note": "string"}],\n'
         '  "userNotes": [{"section": "About Me" | "Preferences" | "Patterns & Friction", "note": "string"}]\n'
         "}\n"
-        "Both `notes` and `userNotes` may be empty lists if nothing new was stated this turn."
+        "Both lists may be empty if nothing durable was stated."
     )
 
     response = _complete(
         model=model_name,
         messages=[
             {"role": "system", "content": system_instruction},
-            {"role": "user", "content": "Decide whether to ask a clarifying question or proceed, and extract any durable facts."}
+            {"role": "user", "content": "Extract any durable project and user facts from the conversation."}
         ],
         response_format={"type": "json_object"},
-        temperature=0.6,
+        temperature=0.3,
         num_retries=1
     )
 
     content = response.choices[0].message.content
     parsed = json.loads(content)
-    action = parsed.get("action", "ready")
-    question = parsed.get("question", "Got it, let's build your plan.")
     notes = _sanitize_notes(parsed.get("notes", []))
     user_notes = _sanitize_user_notes(parsed.get("userNotes", []))
-    return action, question, notes, user_notes
+    return notes, user_notes
 
 
 def run_execution_phase(messages, deadline_str, days_remaining, depth, context_ledger, user_profile, model_name):
@@ -490,6 +486,20 @@ def handle_chat_turn_streaming(payload, emit):
         emit({"type": "result", "status": "error", "message": key_error, "data": None, "notes": [], "userNotes": []})
         return
 
+    def emit_turn_notes():
+        # Recover the durable facts the streamed prose reply couldn't carry.
+        # Emitted as a trailing line AFTER the result so the UI has already
+        # committed the reply — no perceived stall. Failures are swallowed:
+        # note extraction is best-effort and must never break the chat turn.
+        try:
+            notes, user_notes = extract_turn_notes(
+                messages, resolved_deadline_str, days_remaining, context_ledger, user_profile, model_name
+            )
+            if notes or user_notes:
+                emit({"type": "notes", "notes": notes, "userNotes": user_notes})
+        except Exception as e:
+            print(f"turn-note extraction failed: {e}")
+
     try:
         if current_checklist:
             # Mutation: structured, emit final result only.
@@ -504,6 +514,7 @@ def handle_chat_turn_streaming(payload, emit):
             )
             if not ready:
                 emit({"type": "result", "status": "clarifying", "message": question, "data": None, "notes": [], "userNotes": []})
+                emit_turn_notes()
                 return
             # ready -> fall through to execution (no tokens for the checklist)
 
@@ -518,6 +529,7 @@ def handle_chat_turn_streaming(payload, emit):
             "notes": [],
             "userNotes": []
         })
+        emit_turn_notes()
     except Exception as e:
         emit({
             "type": "result",
@@ -530,64 +542,48 @@ def handle_chat_turn_streaming(payload, emit):
 
 
 def handle_chat_turn(payload):
+    """
+    Non-streaming entry point, used only for checklist MUTATION (the
+    `update-checklist` IPC always sends a `currentChecklist`). The clarifying and
+    execution turns run exclusively through handle_chat_turn_streaming, so those
+    branches used to be dead here and have been removed. A payload without a
+    currentChecklist is treated defensively as an error.
+    """
     messages = payload.get("messages", [])
-    deadline_str = payload.get("deadline", datetime.now().strftime("%Y-%m-%d"))
-    depth = payload.get("depth", "Brief")
     model_name = payload.get("model") or DEFAULT_MODEL
     context_ledger = payload.get("contextLedger")
     user_profile = payload.get("userProfile")
     current_checklist = payload.get("currentChecklist")
 
-    _today_str, resolved_deadline_str, days_remaining = _resolve_deadline(deadline_str)
-
     key_error = _missing_api_key(model_name)
     if key_error:
         return {"status": "error", "message": key_error, "data": None, "notes": [], "userNotes": []}
 
-    try:
-        # Mutation mode: a checklist already exists and the user is asking to adjust it
-        if current_checklist:
-            latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-            summary, new_checklist = run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name)
-            return {
-                "status": "updated",
-                "message": summary,
-                "data": new_checklist,
-                "notes": [{
-                    "section": "Plan Adjustments",
-                    "note": f"Request: \"{latest_request}\" -> {summary}"
-                }],
-                "userNotes": []
-            }
-
-        turn = _user_turn_count(messages)
-
-        if turn < MAX_CLARIFYING_TURNS and not _user_wants_no_followup(messages):
-            action, question, notes, user_notes = run_clarification_phase(
-                messages, resolved_deadline_str, days_remaining, context_ledger, user_profile, model_name
-            )
-            if action == "ask":
-                return {"status": "clarifying", "message": question, "data": None, "notes": notes, "userNotes": user_notes}
-            # action == "ready" falls through to execution below, but still
-            # carries forward any notes recognized on this turn
-        else:
-            notes = []
-            user_notes = []
-
-        result = run_execution_phase(
-            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, model_name
-        )
+    if not current_checklist:
         return {
-            "status": "complete",
-            "message": "Here's your plan. Let's build momentum.",
-            "data": result,
-            "notes": notes,
-            "userNotes": user_notes
+            "status": "error",
+            "message": "handle_chat_turn was called without a checklist to mutate.",
+            "data": None,
+            "notes": [],
+            "userNotes": []
         }
 
+    try:
+        latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+        summary, new_checklist = run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name)
+        return {
+            "status": "updated",
+            "message": summary,
+            "data": new_checklist,
+            "notes": [{
+                "section": "Plan Adjustments",
+                "note": f"Request: \"{latest_request}\" -> {summary}"
+            }],
+            "userNotes": []
+        }
     except Exception as e:
         return {
-            "status": "clarifying",
+            "status": "error",
             "message": f"Something went wrong on my end ({str(e)}). Could you try that again?",
             "data": None,
             "notes": [],

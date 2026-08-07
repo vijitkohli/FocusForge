@@ -2,6 +2,27 @@
 
 export type SubtaskStatus = 'todo' | 'doing' | 'done'
 
+/**
+ * Model catalog for the workspace dropdown. Kept here so the option list and
+ * the default are a single source of truth (previously the default was
+ * hardcoded in the renderer and drifted from the docs). `DEFAULT_MODEL` matches
+ * the README/.env.example so a fresh clone with only a GEMINI_API_KEY works out
+ * of the box; per-project last-used model overrides it when present.
+ */
+export interface ModelOption {
+  value: string
+  label: string
+}
+
+export const MODELS: ModelOption[] = [
+  { value: 'gemini/gemini-2.5-flash-lite', label: 'Gemini Flash Lite' },
+  { value: 'gpt-4o', label: 'GPT-4o' },
+  { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
+  { value: 'ollama/llama3.1:8b', label: 'Local (Llama 3.1 8B)' }
+]
+
+export const DEFAULT_MODEL = 'gemini/gemini-2.5-flash-lite'
+
 const NO_FOLLOWUP_SENTINEL = 'DO NOT ASK FOLLOW UP QUESTIONS'
 const MAX_TITLE_LENGTH = 80
 
@@ -184,14 +205,22 @@ export interface ChatMessage {
 }
 
 /**
- * LedgerSection: the fixed headings in a project's context_<projectId>.md ledger.
- * Every write to project state names which section it belongs under.
+ * LEDGER_SECTIONS: the fixed headings in a project's context_<projectId>.md
+ * ledger, in the order they appear. Single source of truth for the section
+ * contract on the TS side (main process + renderer both import this).
  */
-export type LedgerSection =
-  | 'Constraints & Specifications'
-  | 'Document Excerpts'
-  | 'Milestones & Completed Work'
-  | 'Plan Adjustments'
+export const LEDGER_SECTIONS = [
+  'Constraints & Specifications',
+  'Document Excerpts',
+  'Milestones & Completed Work',
+  'Plan Adjustments'
+] as const
+
+/**
+ * LedgerSection: one of the fixed ledger headings. Every write to project
+ * state names which section it belongs under.
+ */
+export type LedgerSection = (typeof LEDGER_SECTIONS)[number]
 
 export interface LedgerNote {
   section: LedgerSection
@@ -199,11 +228,17 @@ export interface LedgerNote {
 }
 
 /**
- * UserProfileSection: the three user-editable headings in system/user_profile.md.
- * "Projects Overview" is machine-owned (auto-regenerated on read) and is never
- * a valid target for LLM-emitted notes.
+ * USER_PROFILE_SECTIONS: the three user-editable headings in
+ * system/user_profile.md. "Projects Overview" is machine-owned
+ * (auto-regenerated on read) and is never a valid target for LLM-emitted notes,
+ * so it is deliberately not part of this list.
  */
-export type UserProfileSection = 'About Me' | 'Preferences' | 'Patterns & Friction'
+export const USER_PROFILE_SECTIONS = ['About Me', 'Preferences', 'Patterns & Friction'] as const
+
+/**
+ * UserProfileSection: one of the three user-editable profile headings.
+ */
+export type UserProfileSection = (typeof USER_PROFILE_SECTIONS)[number]
 
 export interface UserProfileNote {
   section: UserProfileSection
@@ -265,25 +300,16 @@ export interface ProjectTask {
 }
 
 /**
- * Type definition (JSON structure)
+ * ProjectData: the on-disk shape of a project's project_data.json.
+ * `lastModel` remembers the model last used in this project so the workspace
+ * dropdown can default to it (falling back to the most recent task's model,
+ * then the shared DEFAULT_MODEL).
  */
 export interface ProjectData {
-  projectId: string
+  name?: string
+  created?: string
   tasks: ProjectTask[]
-}
-
-/**
- * UpcomingTask: a task flattened out of its project for the dashboard's
- * deadline view, with deadline math already computed.
- */
-export interface UpcomingTask {
-  projectId: string
-  projectName: string
-  taskId: string
-  taskTitle: string
-  deadline: string
-  daysRemaining: number
-  isComplete: boolean
+  lastModel?: string
 }
 
 /**

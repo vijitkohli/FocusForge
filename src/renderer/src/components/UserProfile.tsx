@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { USER_PROFILE_SECTIONS } from 'src/common/types'
 
-const REQUIRED_SECTIONS = ['## About Me', '## Preferences', '## Patterns & Friction']
+const REQUIRED_SECTIONS = USER_PROFILE_SECTIONS.map((s) => `## ${s}`)
 
 export function UserProfile(): React.JSX.Element {
   const [contents, setContents] = useState('')
