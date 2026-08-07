@@ -76,7 +76,7 @@ Inline add / edit / delete / toggle-complete on subtasks, fully offline (no LLM 
 
 ## Dashboard deadline view
 
-`FileSystemManager.getUpcomingTasks()` aggregates tasks across **all** projects on read (no denormalized cache to keep in sync), computes date-only `daysRemaining`, sorts soonest-first. Urgency colors reuse the existing difficulty-border CSS classes: `<3` days = red (`border-hard`), `3–7` = amber (`border-medium`), `>7` = green (`border-easy`). Completed tasks are excluded from the main list and tucked into a collapsed "Completed (n)" dropdown.
+`FileSystemManager.getUpcomingSubtasks()` aggregates incomplete subtasks across **all** projects on read (no denormalized cache to keep in sync), computes date-only `daysRemaining`, sorts soonest-first. Urgency colors reuse the existing difficulty-border CSS classes: `<3` days = red (`border-hard`), `3–7` = amber (`border-medium`), `>7` = green (`border-easy`).
 
 ---
 
@@ -158,8 +158,8 @@ Inline add / edit / delete / toggle-complete on subtasks, fully offline (no LLM 
 ## What's still rough / not done
 
 - `ANTHROPIC_API_KEY` in `engine/.env` is currently empty — Claude option in the dropdown won't work until a real key is added.
-- **Streaming caveat:** the streamed clarifying turn returns plain prose, so it does **not** extract per-turn ledger `notes` (execution/mutation still do). Stated facts still reach the engine via the saved conversation + ledger.
-- **Mutation drops checkbox/board state:** an AI plan adjustment re-emits subtasks/prereqs fresh, resetting their completed/`status` state.
+- ~~**Streaming caveat:** the streamed clarifying turn returns plain prose, so it does not extract per-turn ledger `notes`.~~ **Fixed:** after the streamed reply is committed, `engine/main.py` runs a cheap `extract_turn_notes` call and emits a trailing `{type:"notes"}` line; the main process appends those to the ledger/profile fire-and-forget (no UI stall). The dead structured `run_clarification_phase` was removed.
+- ~~**Mutation drops checkbox/board state:** an AI plan adjustment re-emits subtasks/prereqs fresh, resetting their completed/`status` state.~~ **Fixed:** `update-checklist` now runs the replacement checklist through `reconcileSubtasks`/`reconcilePrerequisites` (`common/types.ts`), matching steps by normalized title so surviving steps keep their done/doing state + original `completedAt`; new/renamed steps start `todo`.
 - No automated tests anywhere in the repo.
 - A handful of `@ts-ignore`s remain in `Dashboard.tsx` around `window.api` calls that are already properly typed (cosmetic cleanup, not a bug).
 - `engine/chroma_db/` has a lot of untracked transient collection directories from testing the relevance-filtering pipeline — harmless but could be `.gitignore`d.

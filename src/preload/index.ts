@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { ChatTurnPayload, DecompositionResult, LedgerNote } from '../common/types'
+import { ChatTurnPayload, DecompositionResult, LedgerNote, ProjectData } from '../common/types'
 
 // Custom APIs for renderer
 const api = {
@@ -50,7 +50,7 @@ const api = {
 
   createProject: (name: string) => ipcRenderer.invoke('create-project', name),
 
-  saveProjectData: (projectId: string, data: any, notes?: LedgerNote[]) =>
+  saveProjectData: (projectId: string, data: ProjectData, notes?: LedgerNote[]) =>
     ipcRenderer.invoke('save-project-data', projectId, data, notes),
 
   loadProjectData: (projectId: string) => ipcRenderer.invoke('load-project-data', projectId),
@@ -77,10 +77,6 @@ const api = {
   // Shows a native confirm dialog before wiping — returns { canceled: true } if
   // the user backs out, { success: true } on completion.
   resetAllData: () => ipcRenderer.invoke('reset-all-data'),
-
-  // Tasks across every project, flattened and deadline-sorted, for the
-  // dashboard's deadline view
-  getUpcomingTasks: () => ipcRenderer.invoke('get-upcoming-tasks'),
 
   // Incomplete subtasks across every project, flattened and deadline-sorted,
   // for the dashboard's "how are you feeling today?" mood suggestions

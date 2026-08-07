@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { ChatMessage, ProjectTask, cleanTaskTitle } from 'src/common/types'
+import {
+  ChatMessage,
+  DEFAULT_MODEL,
+  LEDGER_SECTIONS,
+  MODELS,
+  ProjectTask,
+  cleanTaskTitle
+} from 'src/common/types'
 import { TaskDetail } from './TaskDetails'
 
 interface WorkspaceProps {
@@ -16,7 +23,9 @@ export function ProjectWorkspace({
   onStartFocus
 }: WorkspaceProps): React.JSX.Element {
   // --- SCHEDULING CONTROLS (explicit, not conversational) ---
-  const [selectedModel, setSelectedModel] = useState('ollama/llama3.1:8b')
+  // Initialized to the shared default; overwritten on mount with the project's
+  // remembered model (see the load effect below).
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
   const [deadline, setDeadline] = useState(new Date().toISOString().split('T')[0])
   const [depth, setDepth] = useState('Brief')
 
@@ -64,6 +73,10 @@ export function ProjectWorkspace({
             const target = data.tasks.find((t: ProjectTask) => t.id === initialTaskId)
             if (target) setViewingTask(target)
           }
+          // Default the model dropdown to what this project last used, then the
+          // most recent task's model, then the shared default.
+          const latestTask = data.tasks[data.tasks.length - 1]
+          setSelectedModel(data.lastModel ?? latestTask?.model ?? DEFAULT_MODEL)
         }
       } catch (e) {
         console.error('Failed to load history', e)
@@ -184,6 +197,18 @@ export function ProjectWorkspace({
     setErrorMessage(null)
   }
 
+  // Remember the model per project so the next visit defaults to it. Merges
+  // lastModel into the existing data file via the normal save path.
+  const handleModelChange = async (model: string): Promise<void> => {
+    setSelectedModel(model)
+    try {
+      const currentFile = (await window.api.loadProjectData(projectId)) || { tasks: [] }
+      await window.api.saveProjectData(projectId, { ...currentFile, lastModel: model })
+    } catch (e) {
+      console.error('Failed to persist model choice', e)
+    }
+  }
+
   const handleViewTask = (task: ProjectTask) => setViewingTask(task)
 
   const handleDeleteTask = async (e: React.MouseEvent, task: ProjectTask): Promise<void> => {
@@ -216,20 +241,13 @@ export function ProjectWorkspace({
     }
   }
 
-  const REQUIRED_HEADINGS = [
-    'Constraints & Specifications',
-    'Document Excerpts',
-    'Milestones & Completed Work',
-    'Plan Adjustments'
-  ]
-
   const startEditingContext = (): void => {
     setContextDraft(contextLedger)
     setEditingContext(true)
   }
 
   const handleSaveContext = async (): Promise<void> => {
-    const missing = REQUIRED_HEADINGS.filter((h) => !contextDraft.includes(`## ${h}`))
+    const missing = LEDGER_SECTIONS.filter((h) => !contextDraft.includes(`## ${h}`))
     if (
       missing.length > 0 &&
       !window.confirm(
@@ -384,13 +402,14 @@ export function ProjectWorkspace({
                 <span className="text-xs text-fg-2">Model</span>
                 <select
                   value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
+                  onChange={(e) => handleModelChange(e.target.value)}
                   className="rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
                 >
-                  <option value="ollama/llama3.1:8b">Local (Llama 3.1 8B)</option>
-                  <option value="gemini/gemini-2.5-flash-lite">Gemini Flash Lite</option>
-                  <option value="gpt-4o">GPT-4o</option>
-                  <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+                  {MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>

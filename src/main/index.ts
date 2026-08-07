@@ -6,7 +6,12 @@ import icon from '../../resources/icon.png?asset'
 
 import { PythonShell } from 'python-shell'
 import { FileSystemManager } from './fs-manager'
-import { withCompletion } from '../common/types'
+import {
+  reconcileSubtasks,
+  reconcilePrerequisites,
+  DecompositionResult,
+  ProjectData
+} from '../common/types'
 
 const fsManager = new FileSystemManager()
 
@@ -106,26 +111,37 @@ function runPythonWithStdin(scriptName: string, payload: unknown): Promise<any> 
 /**
  * Streaming variant for engine/main.py: the script emits NDJSON
  * `{type:'token', text}` lines as it generates, then one
- * `{type:'result', ...EngineResponse}` line. Tokens are handed to `onToken`
- * (forwarded to the renderer for live typing); the promise resolves with the
- * final result object. extract.py keeps using the one-shot path above.
+ * `{type:'result', ...EngineResponse}` line, and OPTIONALLY a trailing
+ * `{type:'notes', notes, userNotes}` line (durable facts extracted from the
+ * turn after the reply was streamed). Tokens go to `onToken`; the promise
+ * resolves as soon as the `result` line arrives so the UI commits immediately
+ * with no stall, and `onNotes` fires later (fire-and-forget) if a notes line
+ * follows. extract.py keeps using the one-shot path above.
  */
-function runPythonStreaming(payload: unknown, onToken: (text: string) => void): Promise<any> {
+function runPythonStreaming(
+  payload: unknown,
+  onToken: (text: string) => void,
+  onNotes?: (notes: any[], userNotes: any[]) => void
+): Promise<any> {
   return new Promise((resolve, reject) => {
     const scriptPath = join(resolveEngineDir(), 'main.py')
     const pyshell = new PythonShell(scriptPath, { mode: 'json', pythonPath: PYTHON_PATH })
 
-    let result: any = null
+    let settled = false
     pyshell.on('message', (message) => {
       if (message?.type === 'token') onToken(message.text ?? '')
-      else if (message?.type === 'result') result = message
+      else if (message?.type === 'result') {
+        settled = true
+        resolve(message)
+      } else if (message?.type === 'notes') {
+        onNotes?.(message.notes ?? [], message.userNotes ?? [])
+      }
     })
     pyshell.on('stderr', (line) => console.error('[main.py]', line))
 
     pyshell.send({ ...(payload as object), stream: true } as any).end((err) => {
-      if (err) reject(err)
-      else if (!result) reject(new Error('main.py produced no result'))
-      else resolve(result)
+      if (settled) return
+      reject(err ?? new Error('main.py produced no result'))
     })
   })
 }
@@ -228,8 +244,6 @@ function createWindow(): void {
     fsManager.writeUserProfile(contents)
   )
 
-  ipcMain.handle('get-upcoming-tasks', () => fsManager.getUpcomingTasks())
-
   ipcMain.handle('get-upcoming-subtasks', () => fsManager.getUpcomingSubtasks())
 
   ipcMain.handle('get-activity-stats', () => fsManager.getActivityStats())
@@ -275,16 +289,24 @@ app.whenReady().then(() => {
       const enrichedPayload = { ...payload, contextLedger, userProfile }
 
       // Stream the clarifying question token-by-token back to this renderer.
-      const response = await runPythonStreaming(enrichedPayload, (text) =>
-        event.sender.send('chat-stream', text)
+      // Durable facts arrive on a trailing `notes` line (after the reply is
+      // committed) and are appended fire-and-forget so they never stall the UI.
+      const response = await runPythonStreaming(
+        enrichedPayload,
+        (text) => event.sender.send('chat-stream', text),
+        (notes, userNotes) => {
+          if (notes && notes.length > 0) {
+            fsManager
+              .appendLedgerNotes(payload.projectId, notes)
+              .catch((e) => console.error('Failed to append ledger notes', e))
+          }
+          if (userNotes && userNotes.length > 0) {
+            fsManager
+              .appendUserProfileNotes(userNotes)
+              .catch((e) => console.error('Failed to append user profile notes', e))
+          }
+        }
       )
-
-      if (response.notes && response.notes.length > 0) {
-        await fsManager.appendLedgerNotes(payload.projectId, response.notes)
-      }
-      if (response.userNotes && response.userNotes.length > 0) {
-        await fsManager.appendUserProfileNotes(response.userNotes)
-      }
 
       return response
     } catch (err) {
@@ -340,7 +362,7 @@ app.whenReady().then(() => {
       projectId: string,
       taskId: string,
       request: string,
-      currentChecklist: { originalTask: string; subtasks: any[] },
+      currentChecklist: DecompositionResult,
       deadline: string,
       depth: string,
       model: string
@@ -365,14 +387,16 @@ app.whenReady().then(() => {
           return { success: false, message: response.message }
         }
 
-        const file = (await fsManager.loadProjectData(projectId)) || { tasks: [] }
-        const task = (file.tasks ?? []).find((t: any) => t.id === taskId)
+        const file: ProjectData = (await fsManager.loadProjectData(projectId)) || { tasks: [] }
+        const task = (file.tasks ?? []).find((t) => t.id === taskId)
         if (task) {
-          task.subtasks = response.data.subtasks.map((s: any) => withCompletion({ ...s }, false))
-          task.prerequisites = (response.data.prerequisites ?? []).map((p: any) => ({
-            ...p,
-            isCompleted: false
-          }))
+          // Carry over completion/board progress for steps that survive the
+          // rewrite, so an AI plan adjustment doesn't wipe what's already done.
+          task.subtasks = reconcileSubtasks(task.subtasks ?? [], response.data.subtasks ?? [])
+          task.prerequisites = reconcilePrerequisites(
+            task.prerequisites ?? [],
+            response.data.prerequisites ?? []
+          )
         }
 
         await fsManager.saveProjectData(projectId, file, response.notes)

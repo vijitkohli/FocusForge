@@ -4,9 +4,9 @@ import {
   DecompositionResult,
   EngineResponse,
   LedgerNote,
+  ProjectData,
   Subtask,
   Prerequisite,
-  UpcomingTask,
   UpcomingSubtask,
   ActivityStats
 } from '../common/types'
@@ -41,10 +41,10 @@ declare global {
 
       saveProjectData: (
         projectId: string,
-        data: any,
+        data: ProjectData,
         notes?: LedgerNote[]
       ) => Promise<{ success: boolean; error?: string }>
-      loadProjectData: (projectId: string) => Promise<any>
+      loadProjectData: (projectId: string) => Promise<ProjectData | null>
       deleteProject: (projectId: string) => Promise<{ success: boolean; error?: string }>
       deleteTask: (
         projectId: string,
@@ -59,7 +59,6 @@ declare global {
       readUserProfile: () => Promise<string>
       saveUserProfile: (contents: string) => Promise<{ success: boolean; error?: string }>
       resetAllData: () => Promise<{ success: boolean; error?: string; canceled?: boolean }>
-      getUpcomingTasks: () => Promise<UpcomingTask[]>
       getUpcomingSubtasks: () => Promise<UpcomingSubtask[]>
       getActivityStats: () => Promise<ActivityStats>
       onOpenFocus: (callback: () => void) => () => void

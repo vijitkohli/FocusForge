@@ -9,6 +9,7 @@ import {
   withCompletion
 } from 'src/common/types'
 import { KanbanBoard } from './KanbanBoard'
+import { updateTask } from '../lib/updateTask'
 
 interface TaskDetailProps {
   task: ProjectTask
@@ -148,14 +149,7 @@ export function TaskDetail({
     setSubtasks(updated)
     setSaving(true)
     try {
-      const currentFile = (await window.api.loadProjectData(projectId)) || { tasks: [] }
-      if (!currentFile.tasks) currentFile.tasks = []
-
-      currentFile.tasks = currentFile.tasks.map((t: ProjectTask) =>
-        t.id === task.id ? { ...t, subtasks: updated } : t
-      )
-
-      await window.api.saveProjectData(projectId, currentFile, [note])
+      await updateTask(projectId, task.id, (t) => ({ ...t, subtasks: updated }), note)
     } catch (error) {
       console.error('Failed to save subtask change', error)
     } finally {
@@ -168,12 +162,7 @@ export function TaskDetail({
     setPrerequisites(updated)
     setSaving(true)
     try {
-      const currentFile = (await window.api.loadProjectData(projectId)) || { tasks: [] }
-      if (!currentFile.tasks) currentFile.tasks = []
-      currentFile.tasks = currentFile.tasks.map((t: ProjectTask) =>
-        t.id === task.id ? { ...t, prerequisites: updated } : t
-      )
-      await window.api.saveProjectData(projectId, currentFile, [note])
+      await updateTask(projectId, task.id, (t) => ({ ...t, prerequisites: updated }), note)
     } catch (error) {
       console.error('Failed to save prerequisite change', error)
     } finally {
@@ -230,19 +219,10 @@ export function TaskDetail({
     setSubtasks(rescheduled)
     setSaving(true)
     try {
-      const currentFile = (await window.api.loadProjectData(projectId)) || { tasks: [] }
-      if (!currentFile.tasks) currentFile.tasks = []
-
-      currentFile.tasks = currentFile.tasks.map((t: ProjectTask) =>
-        t.id === task.id ? { ...t, deadline, subtasks: rescheduled } : t
-      )
-
-      await window.api.saveProjectData(projectId, currentFile, [
-        {
-          section: 'Plan Adjustments',
-          note: `Deadline changed from ${task.deadline} to ${deadline}; remaining steps rescheduled.`
-        }
-      ])
+      await updateTask(projectId, task.id, (t) => ({ ...t, deadline, subtasks: rescheduled }), {
+        section: 'Plan Adjustments',
+        note: `Deadline changed from ${task.deadline} to ${deadline}; remaining steps rescheduled.`
+      })
       task.deadline = deadline
     } catch (error) {
       console.error('Failed to save deadline change', error)
