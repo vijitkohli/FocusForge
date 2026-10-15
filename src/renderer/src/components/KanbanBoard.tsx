@@ -1,9 +1,11 @@
-import React, { useState } from 'react'
-import { Subtask, SubtaskStatus, deriveStatus } from 'src/common/types'
+import { useEffect, useRef, useState, type JSX } from 'react'
+import { deriveStatus, type Subtask, type SubtaskStatus } from '../../../common/types'
+import { DayLabel, DifficultyTag, Menu } from '../ui'
 
 interface KanbanBoardProps {
   subtasks: Subtask[]
   onMove: (subtaskId: string, status: SubtaskStatus) => void
+  disabled?: boolean
 }
 
 const COLUMNS: { status: SubtaskStatus; label: string }[] = [
@@ -12,83 +14,119 @@ const COLUMNS: { status: SubtaskStatus; label: string }[] = [
   { status: 'done', label: 'Done' }
 ]
 
-const DIFFICULTY_DOT: Record<string, string> = {
-  easy: 'bg-easy',
-  medium: 'bg-medium',
-  hard: 'bg-hard'
-}
-
-/**
- * Three-column board (To do / Doing / Done) for a task's subtasks. Drag a card
- * between columns to change its state — native HTML5 drag-and-drop, no library.
- * State changes are handed up via onMove; the parent persists (with ledger note)
- * through the same path as the list-view checkbox.
- */
-export function KanbanBoard({ subtasks, onMove }: KanbanBoardProps): React.JSX.Element {
+export function KanbanBoard({ subtasks, onMove, disabled = false }: KanbanBoardProps): JSX.Element {
   const [dragId, setDragId] = useState<string | null>(null)
   const [overCol, setOverCol] = useState<SubtaskStatus | null>(null)
-
-  const drop = (status: SubtaskStatus): void => {
-    if (dragId) onMove(dragId, status)
+  const cardActions = useRef(new Map<string, HTMLDivElement>())
+  const pendingFocus = useRef<{ id: string; status: SubtaskStatus } | null>(null)
+  useEffect(() => {
+    const target = pendingFocus.current
+    if (!target || disabled) return
+    const step = subtasks.find((item) => item.id === target.id)
+    if (step && deriveStatus(step) === target.status) {
+      cardActions.current
+        .get(target.id)
+        ?.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')
+        ?.focus()
+    }
+    pendingFocus.current = null
+  }, [subtasks, disabled])
+  const clearDrag = (): void => {
     setDragId(null)
     setOverCol(null)
   }
 
   return (
-    <div className="grid flex-1 grid-cols-3 gap-3 overflow-y-auto pr-1">
-      {COLUMNS.map((col) => {
-        const items = subtasks.filter((s) => deriveStatus(s) === col.status)
-        const isOver = overCol === col.status
+    <div className="grid min-w-0 grid-cols-1 gap-3 bg-bg-1 sm:grid-cols-3">
+      {COLUMNS.map((column) => {
+        const items = subtasks.filter((step) => deriveStatus(step) === column.status)
         return (
-          <div
-            key={col.status}
-            onDragOver={(e) => {
-              e.preventDefault()
-              setOverCol(col.status)
+          <section
+            key={column.status}
+            aria-label={`${column.label}, ${items.length} steps`}
+            onDragOver={(event) => {
+              if (disabled || !dragId) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+              setOverCol(column.status)
             }}
-            onDragLeave={() => setOverCol((c) => (c === col.status ? null : c))}
-            onDrop={() => drop(col.status)}
-            className={`flex min-h-48 flex-col gap-2 rounded-lg border p-2.5 transition ${
-              isOver ? 'border-accent bg-accent-soft' : 'border-border bg-surface'
-            }`}
+            onDragLeave={(event) => {
+              if (
+                event.relatedTarget instanceof Node &&
+                event.currentTarget.contains(event.relatedTarget)
+              )
+                return
+              setOverCol((current) => (current === column.status ? null : current))
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              const target = subtasks.find((step) => step.id === dragId)
+              if (!disabled && target && deriveStatus(target) !== column.status) {
+                pendingFocus.current = { id: target.id, status: column.status }
+                onMove(target.id, column.status)
+              }
+              clearDrag()
+            }}
+            className={`min-h-40 min-w-0 rounded-md p-3 ${overCol === column.status && !disabled ? 'bg-accent-soft' : 'bg-bg-2'}`}
           >
-            <div className="flex items-center justify-between px-1 pb-1">
-              <span className="text-xs font-medium text-fg-2">{col.label}</span>
-              <span className="rounded bg-bg-3 px-2 py-0.5 text-xs text-fg-3">{items.length}</span>
-            </div>
-
-            {items.length === 0 ? (
-              <p className="px-1 py-6 text-center text-xs text-fg-3">Nothing here yet</p>
-            ) : (
-              items.map((item) => (
-                <div
-                  key={item.id}
-                  draggable
-                  onDragStart={() => setDragId(item.id)}
-                  onDragEnd={() => {
-                    setDragId(null)
-                    setOverCol(null)
-                  }}
-                  className={`cursor-grab rounded-xl border border-border bg-bg-3 p-3 text-sm active:cursor-grabbing ${
-                    dragId === item.id ? 'opacity-50' : ''
-                  }`}
-                >
-                  <div className="mb-1 flex items-center gap-2">
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${DIFFICULTY_DOT[item.difficulty || 'medium']}`}
-                    />
-                    <span className="text-xs text-fg-3">
-                      {item.scheduledDate}
-                      {item.timeEstimate ? ` • ${item.timeEstimate}m` : ''}
-                    </span>
-                  </div>
-                  <p className={col.status === 'done' ? 'text-fg-3 line-through' : 'text-fg-1'}>
-                    {item.title}
-                  </p>
-                </div>
-              ))
+            <h3 className="mb-3 text-sm font-semibold text-fg-2">
+              {column.label} <span className="ml-1 tabular-nums">{items.length}</span>
+            </h3>
+            {!items.length && (
+              <p className="py-6 text-center text-[12.5px] text-fg-2">Nothing here yet</p>
             )}
-          </div>
+            <ul className="space-y-2">
+              {items.map((item) => (
+                <li
+                  key={item.id}
+                  draggable={!disabled}
+                  onDragStart={(event) => {
+                    if (disabled) {
+                      event.preventDefault()
+                      return
+                    }
+                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.setData('text/plain', item.id)
+                    setDragId(item.id)
+                  }}
+                  onDragEnd={clearDrag}
+                  className={`min-w-0 rounded-md bg-bg-3 p-3 ${disabled ? '' : 'cursor-grab active:cursor-grabbing'} ${dragId === item.id ? 'opacity-50' : ''}`}
+                >
+                  <div className="mb-2 flex min-w-0 items-start gap-2">
+                    <p
+                      className={`row-title min-w-0 flex-1 [overflow-wrap:anywhere] ${column.status === 'done' ? 'text-fg-2 line-through' : 'text-fg-1'}`}
+                    >
+                      {item.title}
+                    </p>
+                    <Menu
+                      ref={(element) => {
+                        if (element) cardActions.current.set(item.id, element)
+                        else cardActions.current.delete(item.id)
+                      }}
+                      label={`Move ${item.title}`}
+                      disabled={disabled}
+                      items={COLUMNS.map((destination) => ({
+                        id: destination.status,
+                        label: `Move to ${destination.label}`,
+                        disabled: destination.status === column.status,
+                        onSelect: () => {
+                          pendingFocus.current = { id: item.id, status: destination.status }
+                          onMove(item.id, destination.status)
+                        }
+                      }))}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[12.5px] text-fg-2">
+                    {item.scheduledDate && <DayLabel date={item.scheduledDate} />}
+                    {item.timeEstimate != null && (
+                      <span className="tabular-nums">{item.timeEstimate} min</span>
+                    )}
+                    <DifficultyTag difficulty={item.difficulty ?? 'medium'} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         )
       })}
     </div>
