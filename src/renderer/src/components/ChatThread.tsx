@@ -6,6 +6,8 @@ export interface ChatThreadProps {
   messages: ChatMessage[]
   loading: boolean
   streamingText: string
+  /** The reply has gone quiet for a while: reassure instead of looking stuck. */
+  slow?: boolean
   onExampleSelect?: (text: string) => void
   className?: string
 }
@@ -20,6 +22,7 @@ export function ChatThread({
   messages,
   loading,
   streamingText,
+  slow = false,
   onExampleSelect,
   className = ''
 }: ChatThreadProps): JSX.Element {
@@ -29,7 +32,7 @@ export function ChatThread({
   useEffect(() => {
     const element = scrollRef.current
     if (element && followRef.current) element.scrollTop = element.scrollHeight
-  }, [messages, loading, streamingText])
+  }, [messages, loading, streamingText, slow])
 
   return (
     <div
@@ -92,6 +95,11 @@ export function ChatThread({
             </span>
           )}
         </div>
+      )}
+      {loading && slow && (
+        <p role="status" className="self-start text-[12.5px] text-fg-3">
+          Still thinking. Plans take a little longer, or press Stop to edit your message.
+        </p>
       )}
     </div>
   )

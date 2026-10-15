@@ -34,6 +34,8 @@ export interface QueueStore {
   clearOverride(): void
   load(): Promise<void>
   refresh(): Promise<void>
+  /** Reloads and puts `item` first once it appears (for steps that don't exist yet). */
+  refreshWithFront(item: QueueIdentity): Promise<void>
 }
 
 export function queueKey(item: QueueIdentity): string {
@@ -153,7 +155,11 @@ export const queueStore: QueueStore = {
   clearSkips: () => publish({ skipped: [] }, true),
   clearOverride: () => publish({ frontOverride: null }),
   load: () => pending ?? (snapshot.loaded ? Promise.resolve() : refresh()),
-  refresh
+  refresh,
+  refreshWithFront(item) {
+    snapshot = { ...snapshot, frontOverride: queueKey(item) }
+    return refresh()
+  }
 }
 
 export function useQueue(): QueueSnapshot {

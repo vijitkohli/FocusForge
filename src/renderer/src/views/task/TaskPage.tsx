@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { AlertCircle, ArrowLeft } from 'lucide-react'
+import { AlertCircle, ArrowLeft, MessageSquare } from 'lucide-react'
 import {
   overdueSubtasks,
   redistributeSchedule,
@@ -16,7 +16,11 @@ import {
 } from '../../../../common/types'
 import type { NavigationProps } from '../../shell/navigation'
 import { queueStore } from '../../lib/queue'
-import { Button, SegmentedControl, Skeleton } from '../../ui'
+import { Button, EmptyState, SegmentedControl, Skeleton } from '../../ui'
+import { isUnplanned } from '../../../../common/outline'
+import { seriesTemplate } from '../../../../common/recurrence'
+import { formatLocalDate } from '../../lib/dates'
+import { RepeatDrawer } from './RepeatDrawer'
 import { KanbanBoard } from '../../components/KanbanBoard'
 import { ProjectNotesDrawer } from '../../components/ProjectNotesDrawer'
 import { TaskHeader } from './TaskHeader'
@@ -44,9 +48,12 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
   const [loading, setLoading] = useState(true)
   const [reload, setReload] = useState(0)
   const [failure, setFailure] = useState<Failure | null>(null)
-  const [busy, setBusy] = useState<'saving' | 'adjusting' | 'deleting' | null>(null)
+  const [splitNotice, setSplitNotice] = useState<string | null>(null)
+  const [busy, setBusy] = useState<'saving' | 'adjusting' | 'splitting' | 'deleting' | null>(null)
   const [view, setView] = useState<'list' | 'board'>('list')
   const [notesOpen, setNotesOpen] = useState(false)
+  const [repeatOpen, setRepeatOpen] = useState(false)
+  const [series, setSeries] = useState<ProjectTask | null>(null)
   const [request, setRequest] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   // A ref closes the Enter/blur and rapid-click gap before React disables controls.
@@ -71,6 +78,7 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
         const current = project?.tasks.find((item) => item.id === taskId)
         if (!current) throw new Error('This task could not be found. It may have been deleted.')
         setTask(current)
+        setSeries(seriesTemplate(project?.tasks ?? [], current) ?? null)
         setProjectName(project?.name || projectId.replace(/_/g, ' '))
       })
       .catch((cause: unknown) => {
@@ -223,6 +231,22 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
     )
   }
 
+  const splitStep = (id: string): void => {
+    void run('splitting', "Couldn't split this step.", async () => {
+      setMessage(null)
+      const result = await window.api.splitStep(projectId, taskId, id)
+      if (result.cancelled) return
+      if (!result.success) throw new Error(result.message)
+      const project = await window.api.loadProjectData(projectId)
+      const saved = project?.tasks.find((item) => item.id === taskId)
+      if (mounted.current) {
+        if (saved) setTask(saved)
+        setSplitNotice(result.message)
+      }
+      await refreshQueue()
+    })
+  }
+
   const addStep = (title: string): void => {
     if (!title.trim()) return
     const step: Subtask = {
@@ -296,6 +320,7 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
         task.depth,
         task.model
       )
+      if (result.cancelled) return
       if (!result.success || !result.subtasks)
         throw new Error(result.message || 'The coach returned no updated plan. Try again.')
       // Verify persistence: the legacy IPC handler can return success after a failed disk write.
@@ -330,6 +355,17 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
       await refreshQueue()
       if (mounted.current) back()
     })
+  }
+
+  const setRepeat = async (weekday: number | null, until = ''): Promise<void> => {
+    const result = await window.api.setRecurrence(projectId, taskId, weekday, until)
+    if (!result.success) throw new Error(result.error || "Couldn't save the weekly repeat.")
+    setReload((value) => value + 1)
+    await refreshQueue()
+  }
+
+  const stopRepeating = (): void => {
+    void run('saving', "Couldn't stop repeating.", () => setRepeat(null))
   }
 
   const disabled = !!busy
@@ -373,7 +409,43 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
               onNotes={() => setNotesOpen(true)}
               onDelete={deleteTask}
               onDeadline={deadlineChange}
+              repeating={!!series?.recurrence}
+              onRepeat={() => setRepeatOpen(true)}
+              onStopRepeating={stopRepeating}
             />
+            {series?.recurrence && (
+              <p className="meta -mt-4 text-fg-2">
+                Repeats every{' '}
+                {
+                  ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
+                    series.recurrence.weekday
+                  ]
+                }{' '}
+                until {formatLocalDate(series.recurrence.until)}
+              </p>
+            )}
+            {isUnplanned(task) && (
+              <EmptyState
+                icon={MessageSquare}
+                title="Not planned yet"
+                description={[
+                  task.assessment?.weight != null ? `Worth ${task.assessment.weight}%.` : '',
+                  task.assessment?.notes ?? '',
+                  'The coach will break it into small steps you can start.'
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                action={
+                  <Button
+                    variant="primary"
+                    disabled={disabled}
+                    onClick={() => onNavigate({ name: 'coach', projectId, planTaskId: task.id })}
+                  >
+                    Plan with coach
+                  </Button>
+                }
+              />
+            )}
             <ReplanBanner
               count={overdueSubtasks(task.subtasks).length}
               disabled={disabled}
@@ -400,6 +472,27 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
                   ]}
                 />
               </div>
+              {busy === 'splitting' ? (
+                <div
+                  role="status"
+                  className="mb-3 flex flex-wrap items-center gap-3 text-sm text-fg-2"
+                >
+                  Breaking that step into smaller ones…
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void window.api.cancelSplitStep()}
+                  >
+                    Stop
+                  </Button>
+                </div>
+              ) : (
+                splitNotice && (
+                  <p role="status" className="mb-3 text-sm text-fg-2">
+                    {splitNotice}
+                  </p>
+                )
+              )}
               {view === 'list' ? (
                 <StepList
                   items={task.subtasks}
@@ -407,6 +500,7 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
                   onToggle={toggleStep}
                   onEdit={editStep}
                   onDelete={deleteStep}
+                  onSplit={splitStep}
                   onAdd={addStep}
                 />
               ) : (
@@ -423,6 +517,7 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
               adjusting={busy === 'adjusting'}
               onChange={setRequest}
               onAdjust={adjust}
+              onStop={() => void window.api.cancelPlanAdjustment()}
             />
           </>
         ) : (
@@ -431,6 +526,14 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
           </Button>
         )}
       </div>
+      {task && repeatOpen && (
+        <RepeatDrawer
+          open={repeatOpen}
+          task={series ?? task}
+          onClose={() => setRepeatOpen(false)}
+          onSave={(weekday, until) => setRepeat(weekday, until)}
+        />
+      )}
       <ProjectNotesDrawer
         projectId={projectId}
         open={notesOpen}

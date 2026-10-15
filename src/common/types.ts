@@ -1,4 +1,6 @@
 // src/common/types.ts
+import type { AssessmentInfo } from './outline'
+import type { Recurrence } from './recurrence'
 
 export type SubtaskStatus = 'todo' | 'doing' | 'done'
 
@@ -75,6 +77,7 @@ export interface Subtask {
   difficulty?: 'easy' | 'medium' | 'hard'
   timeEstimate?: number // in minutes
   scheduledDate?: string // YYYY-MM-DD
+  focusSeconds?: number // accumulated Focus-mode time on this step
 }
 
 /**
@@ -169,7 +172,8 @@ export interface UserProfileNote {
  * to context_<projectId>.md by the main process.
  */
 export interface EngineResponse {
-  status: 'clarifying' | 'complete' | 'updated' | 'error'
+  // 'cancelled': the user pressed Stop; nothing was generated or saved.
+  status: 'clarifying' | 'complete' | 'updated' | 'error' | 'cancelled'
   message: string
   data: DecompositionResult | null
   notes?: LedgerNote[]
@@ -214,6 +218,14 @@ export interface ProjectTask {
 
   // The dialogue that produced this task, if any
   conversation?: ChatMessage[]
+
+  // Set on tasks imported from a course outline (status 'unplanned' until planned)
+  assessment?: AssessmentInfo
+
+  // Weekly series: the template carries `recurrence`; every task in the series
+  // (template included) shares `seriesId`.
+  recurrence?: Recurrence
+  seriesId?: string
 }
 
 /**
@@ -227,6 +239,35 @@ export interface ProjectData {
   created?: string
   tasks: ProjectTask[]
   lastModel?: string
+  // Save counter, bumped by the main process on every write. Renderer
+  // load-modify-save paths send back the rev they loaded so a concurrent
+  // write is detected instead of silently overwritten. Absent = 0.
+  rev?: number
+}
+
+/** Result of the "Stuck?" split: the new steps that replaced the stuck one. */
+export interface SplitStepResult {
+  success: boolean
+  message: string
+  cancelled?: boolean
+  created?: Subtask[]
+}
+
+/** Registry entry: the summarized project record kept in master_index.json. */
+export interface ProjectSummary {
+  id: string
+  name: string
+  path: string
+  progress: number
+  lastActive: string
+}
+
+/** Result of a project save; `conflict` means reload and re-apply the change. */
+export interface SaveResult {
+  success: boolean
+  error?: string
+  conflict?: boolean
+  rev?: number
 }
 
 /**

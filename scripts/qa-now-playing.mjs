@@ -301,6 +301,15 @@ try {
     ),
     'QA launcher must use copied registry paths'
   )
+  // A "Plan today" set left by an earlier run would change Now Playing's layout.
+  // Cleared through the API, so reload for the renderer to drop its loaded copy.
+  if (await evaluate('window.api.getTodayPlan()')) {
+    await evaluate('window.api.saveTodayPlan(null)')
+    await evaluate('location.reload()')
+    await sleep(500)
+    await waitFor(`!!document.querySelector('aside button')`, 'reload after clearing today plan')
+    await sleep(500)
+  }
   await both('now-empty')
   await nav('library')
   await both('library-current')
@@ -751,6 +760,270 @@ try {
     dialogAccept = true
     await click('Task options')
     await click('Delete task')
+  }
+
+  {
+    // ---- Improvement-plan features (IMPROVEMENTS_PLAN.md). Model calls only with --live-ai.
+    const pad2 = (n) => String(n).padStart(2, '0')
+    const dayKey = (offset = 0) => {
+      const d = new Date()
+      d.setDate(d.getDate() + offset)
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    }
+    const qaRoot = '/tmp/focusforge-qa/documents/FlowState'
+    const mainFs = `process.getBuiltinModule('fs')`
+    const mainElectron = `process.getBuiltinModule('module').createRequire(process.cwd() + '/')('electron')`
+    const pid = ids.projectId
+    await evaluate(`(async () => {
+    const step = (i) => ({ id: 'qa-f-' + i, title: 'Feature step ' + (i + 1), isCompleted: false, difficulty: 'easy', timeEstimate: 10, scheduledDate: ${JSON.stringify(dayKey())} })
+    const data = await window.api.loadProjectData(${JSON.stringify(pid)})
+    data.tasks = data.tasks.filter((t) => !t.id.startsWith('qa-f'))
+    data.tasks.push({ id: 'qa-feature', title: 'QA feature task', createdAt: new Date().toISOString(), deadline: ${JSON.stringify(dayKey())}, status: 'in-progress', depth: 'Brief', model: 'm', subtasks: [0, 1, 2, 3].map(step) })
+    data.tasks.push({ id: 'qa-f-unplanned', title: 'QA imported quiz', createdAt: new Date().toISOString(), deadline: ${JSON.stringify(dayKey(14))}, status: 'unplanned', depth: 'Brief', model: '', subtasks: [], assessment: { weight: 10, kind: 'quiz', notes: 'Online, 20 minutes.', when: 'Week 9', source: 'qa.pdf' } })
+    const result = await window.api.saveProjectData(${JSON.stringify(pid)}, data, undefined, data.rev ?? 0)
+    if (!result.success) throw Error(result.error)
+  })()`)
+    await evaluate('window.api.getUpcomingSubtasks()')
+    await nav('library')
+    await nav('now')
+
+    // Data safety: a save carrying a stale rev is refused; today's backup exists.
+    const revCheck = await evaluate(`(async () => {
+    const a = await window.api.loadProjectData(${JSON.stringify(pid)})
+    const b = await window.api.loadProjectData(${JSON.stringify(pid)})
+    const first = await window.api.saveProjectData(${JSON.stringify(pid)}, a, undefined, a.rev ?? 0)
+    const second = await window.api.saveProjectData(${JSON.stringify(pid)}, b, undefined, b.rev ?? 0)
+    return [first.success, second.success, !!second.conflict]
+  })()`)
+    assert.deepEqual(revCheck, [true, false, true], 'Stale save was not refused')
+    assert.ok(
+      await mainEvaluate(
+        `${mainFs}.existsSync(${JSON.stringify(`${qaRoot}/system/backups/${dayKey()}/${pid}/project_data.json`)})`
+      ),
+      'No backup for today'
+    )
+    console.log('Verified stale-rev saves are refused and a daily backup exists.')
+
+    // Plan today: fill 30 minutes, export .ics through a stubbed save dialog, clear.
+    await click('Plan today')
+    await selectByLabel('I have', '30')
+    await click('Fill today')
+    await waitFor(`document.body.innerText.includes('of 30 min')`, 'today plan')
+    const planned = await evaluate('window.api.getTodayPlan()')
+    assert.ok(planned && planned.items.length > 0 && planned.budgetMinutes === 30)
+    await both('now-plan-today')
+    const icsPath = '/tmp/focusforge-qa/qa-today.ics'
+    await mainEvaluate(
+      `(() => { const { dialog } = ${mainElectron}; dialog.showSaveDialog = async () => ({ canceled: false, filePath: ${JSON.stringify(icsPath)} }); return true })()`
+    )
+    await click('Add to calendar')
+    await waitFor(`document.body.innerText.includes('Saved. Open the file')`, 'ics saved')
+    const ics = await mainEvaluate(`${mainFs}.readFileSync(${JSON.stringify(icsPath)}, 'utf8')`)
+    assert.ok(ics.startsWith('BEGIN:VCALENDAR\r\n') && ics.includes('BEGIN:VEVENT'), 'Bad .ics')
+    assert.equal((ics.match(/BEGIN:VEVENT/g) || []).length, planned.items.length)
+    await click("Today's plan options")
+    await click('Clear today’s plan')
+    await waitFor(`!document.body.innerText.includes('of 30 min')`, 'plan cleared')
+    console.log(`Verified Plan today (${planned.items.length} steps), .ics export and clearing.`)
+
+    // Weekly repeat: week 2 is created at once (due within 7 days), then stop repeating.
+    await nav('library')
+    await openTask('QA feature task')
+    await click('Task options')
+    await click('Repeat weekly…')
+    await click('Repeat weekly')
+    await waitFor(`document.body.innerText.includes('Repeats every')`, 'repeat saved')
+    const series = (
+      await evaluate(`window.api.loadProjectData(${JSON.stringify(pid)})`)
+    ).tasks.filter((t) => t.seriesId === 'qa-feature')
+    assert.ok(
+      series.some((t) => t.title === 'QA feature task · week 2' && t.deadline === dayKey(7)),
+      'Week 2 not created'
+    )
+    await screenshot('task-repeat', 1440, 900)
+    await click('Task options')
+    await click('Stop repeating')
+    await waitFor(`!document.body.innerText.includes('Repeats every')`, 'repeat stopped')
+    console.log('Verified weekly repeat creates next week and can be stopped.')
+
+    // Unplanned (imported) task: "Not planned" row, task page CTA, Coach prefill.
+    await nav('library')
+    await click('COMP6991')
+    await waitFor(`document.body.innerText.includes('Not planned')`, 'unplanned row')
+    await click('QA imported quiz', false)
+    await waitFor(`document.body.innerText.includes('Not planned yet')`, 'unplanned task page')
+    await click('Plan with coach')
+    await waitFor(
+      `!!document.querySelector('textarea[aria-label="Message to the coach"]')?.value`,
+      'coach prefill'
+    )
+    const brief = await evaluate(
+      `document.querySelector('textarea[aria-label="Message to the coach"]').value`
+    )
+    assert.ok(
+      brief.startsWith('QA imported quiz.') && brief.includes('10%'),
+      `Coach brief: ${brief}`
+    )
+    assert.ok((await bodyText()).includes('Plan “QA imported quiz”'))
+    await screenshot('coach-plan-imported', 1440, 900)
+    console.log('Verified unplanned task row, task-page CTA and coach prefill.')
+
+    // Weekly review card (written directly; generation itself is unit-tested) and the notification route.
+    const review = {
+      weekStart: dayKey(-6),
+      generatedAt: new Date().toISOString(),
+      summary: {
+        weekStart: dayKey(-6),
+        weekEnd: dayKey(),
+        stepsDone: 7,
+        activeDays: 3,
+        currentStreak: 2,
+        longestStreak: 4,
+        tasksFinished: 1,
+        carriedOver: 0,
+        topProject: { name: 'COMP6991', steps: 5 },
+        focusMinutes: 45,
+        estimateRatio: null
+      },
+      text: 'QA review: you finished 7 steps across 3 days.',
+      suggestion: 'QA suggestion: start with the smallest step.',
+      source: 'template'
+    }
+    await mainEvaluate(
+      `(() => { const fs = ${mainFs}; fs.mkdirSync(${JSON.stringify(`${qaRoot}/system/reviews`)}, { recursive: true }); fs.writeFileSync(${JSON.stringify(`${qaRoot}/system/reviews/${review.weekStart}.json`)}, ${JSON.stringify(JSON.stringify(review))}); return true })()`
+    )
+    await nav('now')
+    await mainEvaluate(
+      `(() => { const { BrowserWindow } = ${mainElectron}; const w = BrowserWindow.getAllWindows()[0]; w.webContents.send('reviews-changed'); w.webContents.send('open-history'); return true })()`
+    )
+    await waitFor(
+      `document.body.innerText.includes('QA review: you finished 7 steps')`,
+      'review card'
+    )
+    assert.ok((await bodyText()).includes('Try this week:'))
+    await both('history-review')
+    await mainEvaluate(
+      `(() => { ${mainFs}.rmSync(${JSON.stringify(`${qaRoot}/system/reviews/${review.weekStart}.json`)}); return true })()`
+    )
+    console.log('Verified the weekly review card and its notification route to History.')
+
+    if (liveAI) {
+      // Stop: cancelling a coach turn restores the message with no error.
+      await nav('library')
+      await click('COMP6991')
+      await click('New task with coach')
+      await input(
+        'textarea[aria-label="Message to the coach"]',
+        'QA stop check: essay on the cold war'
+      )
+      await click('Send')
+      await waitFor(
+        `[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Stop')`,
+        'Stop button'
+      )
+      await click('Stop')
+      await waitFor(
+        `document.querySelector('textarea[aria-label="Message to the coach"]')?.value === 'QA stop check: essay on the cold war'`,
+        'message restored after Stop',
+        20000
+      )
+      assert.ok(
+        !(await evaluate(`!!document.querySelector('[role="alert"]')`)),
+        'Stop showed an error'
+      )
+      console.log('Verified Stop cancels a coach turn and restores the message.')
+
+      // Stuck?: split the current Focus step into smaller ones (real model).
+      await nav('library')
+      await openTask('QA feature task')
+      await click('Play next step')
+      await waitFor(`!!document.querySelector('#focus-title')`, 'focus')
+      const stuckTitle = await evaluate(`document.querySelector('#focus-title').textContent`)
+      const before = (await loadTask(pid, 'qa-feature')).subtasks.length
+      await click('Stuck? Make it smaller')
+      await waitFor(
+        `document.querySelector('#focus-title')?.textContent !== ${JSON.stringify(stuckTitle)}`,
+        'split',
+        120000
+      )
+      const after = await loadTask(pid, 'qa-feature')
+      assert.ok(
+        after.subtasks.length >= before + 1 && after.subtasks.length <= before + 2,
+        'Split did not add 2-3 steps'
+      )
+      assert.ok(!after.subtasks.some((s) => s.title === stuckTitle), 'Stuck step still present')
+      const firstNew = after.subtasks.find((s) => s.id.startsWith('split-'))
+      assert.ok(firstNew && firstNew.timeEstimate <= 5, 'First split step over 5 min')
+      await screenshot('focus-after-split', 1440, 900)
+      await key('Escape')
+      console.log(
+        `Verified Stuck? split "${stuckTitle}" into ${after.subtasks.length - before + 1} steps.`
+      )
+
+      // Course outline import through a stubbed file picker and a generated PDF.
+      const outlineTxt = '/tmp/focusforge-qa/qa-outline.txt'
+      const outlinePdf = '/tmp/focusforge-qa/qa-outline.pdf'
+      await writeFile(
+        outlineTxt,
+        [
+          'QAXX1000 Testing Systems - Course Outline - Term 3, 2026',
+          'Term runs from Monday 14 September 2026 to Friday 4 December 2026.',
+          'Assessment summary',
+          'Assignment 1: Unit tests          20%   Friday 20 November 2026, 5pm',
+          'Lab quiz                          10%   Week 9 lab',
+          'Final exam (2 hours)              70%   Exam period',
+          'Assignment 1 is individual: write unit tests for the provided module and submit a zip.',
+          'The lab quiz is a 20 minute online quiz. The final exam covers all lectures.'
+        ].join('\n')
+      )
+      const { spawnSync } = await import('node:child_process')
+      const pdf = spawnSync('cupsfilter', [outlineTxt], { maxBuffer: 10_000_000 })
+      assert.equal(pdf.status, 0, 'cupsfilter could not make the outline PDF')
+      await writeFile(outlinePdf, pdf.stdout)
+      await mainEvaluate(
+        `(() => { const { dialog } = ${mainElectron}; dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [${JSON.stringify(outlinePdf)}] }); return true })()`
+      )
+      await nav('library')
+      await click('COMP6991')
+      await click('Import course outline')
+      await waitFor(
+        `!!document.querySelector('[aria-label="Assessments found"]')`,
+        'outline read',
+        180000
+      )
+      await screenshot('outline-review', 1440, 900)
+      // Keep only rows that already have a due date.
+      await evaluate(`[...document.querySelectorAll('[aria-label="Assessments found"] > li')].forEach((li) => {
+      const date = li.querySelector('input[type="date"]'); const box = li.querySelector('input[type="checkbox"]')
+      if (box && box.checked && (!date || !date.value)) box.click() })`)
+      await sleep(300)
+      await evaluate(
+        `document.querySelector('[aria-label="Assessments found"]').closest('form').querySelector('button[type="submit"]').click()`
+      )
+      await waitFor(
+        `document.body.innerText.includes('Plan each one with the coach')`,
+        'outline import',
+        20000
+      )
+      const imported = (
+        await evaluate(`window.api.loadProjectData(${JSON.stringify(pid)})`)
+      ).tasks.filter((t) => t.status === 'unplanned' && t.assessment?.source === 'qa-outline.pdf')
+      assert.ok(
+        imported.some((t) => /assignment/i.test(t.title) && t.deadline === '2026-11-20'),
+        'Assignment 1 not imported'
+      )
+      const ledger = await evaluate(`window.api.readContextLedger(${JSON.stringify(pid)})`)
+      assert.ok(ledger.includes('outline "qa-outline.pdf"'), 'Outline not noted in the ledger')
+      console.log(`Verified course outline import (${imported.length} task(s)).`)
+    }
+
+    // Clean up the feature fixtures so later checks see the original data.
+    await evaluate(`(async () => {
+    const data = await window.api.loadProjectData(${JSON.stringify(pid)})
+    data.tasks = data.tasks.filter((t) => !t.id.startsWith('qa-f') && t.seriesId !== 'qa-feature' && t.assessment?.source !== 'qa-outline.pdf')
+    await window.api.saveProjectData(${JSON.stringify(pid)}, data)
+    await window.api.saveTodayPlan(null)
+  })()`)
   }
 
   // Coach error states, deterministic and with no model call: the chat-turn

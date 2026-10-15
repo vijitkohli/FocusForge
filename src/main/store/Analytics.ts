@@ -1,4 +1,6 @@
 import { ActivityStats, UpcomingSubtask } from '../../common/types'
+import { EstimateAccuracy, EstimateSample, estimateAccuracy } from '../../common/estimates'
+import { WeekSummary } from '../../common/review'
 import { localDateKey, parseLocalDate } from './paths'
 import { ProjectStore } from './ProjectStore'
 
@@ -117,5 +119,86 @@ export class Analytics {
     }
 
     return { currentStreak, longestStreak, countsByDate, totalCompleted }
+  }
+
+  /** How long steps take in Focus versus their estimates (null until enough data). */
+  async getEstimateAccuracy(): Promise<EstimateAccuracy | null> {
+    const samples: EstimateSample[] = []
+    for (const project of this.projects.getProjects()) {
+      const data = await this.projects.loadProjectData(project.id)
+      for (const task of data?.tasks ?? []) {
+        for (const subtask of task.subtasks ?? []) {
+          if (!subtask.isCompleted || !subtask.completedAt) continue
+          if (!subtask.focusSeconds || !subtask.timeEstimate) continue
+          samples.push({
+            focusSeconds: subtask.focusSeconds,
+            timeEstimate: subtask.timeEstimate,
+            completedAt: subtask.completedAt
+          })
+        }
+      }
+    }
+    return estimateAccuracy(samples)
+  }
+
+  /** Totals for the Monday–Sunday week starting `weekStart` (local YYYY-MM-DD). */
+  async getWeekSummary(weekStart: string): Promise<WeekSummary> {
+    const monday = parseLocalDate(weekStart)
+    const sunday = new Date(monday)
+    sunday.setDate(sunday.getDate() + 6)
+    const weekEnd = localDateKey(sunday)
+    const inWeek = (key: string): boolean => key >= weekStart && key <= weekEnd
+
+    let stepsDone = 0
+    let tasksFinished = 0
+    let carriedOver = 0
+    let focusSeconds = 0
+    const days = new Set<string>()
+    const perProject = new Map<string, number>()
+
+    for (const project of this.projects.getProjects()) {
+      const data = await this.projects.loadProjectData(project.id)
+      for (const task of data?.tasks ?? []) {
+        const steps = task.subtasks ?? []
+        let lastDone = ''
+        for (const step of steps) {
+          if (!step.isCompleted) {
+            const date = step.scheduledDate ?? task.deadline
+            if (date && date <= weekEnd) carriedOver += 1
+            continue
+          }
+          if (!step.completedAt) continue
+          const key = localDateKey(new Date(step.completedAt))
+          if (key > lastDone) lastDone = key
+          if (!inWeek(key)) continue
+          stepsDone += 1
+          days.add(key)
+          perProject.set(project.name, (perProject.get(project.name) ?? 0) + 1)
+          focusSeconds += step.focusSeconds ?? 0
+        }
+        if (steps.length > 0 && steps.every((step) => step.isCompleted) && inWeek(lastDone)) {
+          tasksFinished += 1
+        }
+      }
+    }
+
+    const [stats, accuracy] = await Promise.all([
+      this.getActivityStats(),
+      this.getEstimateAccuracy()
+    ])
+    const top = [...perProject.entries()].sort((a, b) => b[1] - a[1])[0]
+    return {
+      weekStart,
+      weekEnd,
+      stepsDone,
+      activeDays: days.size,
+      currentStreak: stats.currentStreak,
+      longestStreak: stats.longestStreak,
+      tasksFinished,
+      carriedOver,
+      topProject: top ? { name: top[0], steps: top[1] } : null,
+      focusMinutes: Math.round(focusSeconds / 60),
+      estimateRatio: accuracy?.ratio ?? null
+    }
   }
 }

@@ -74,22 +74,26 @@ afterEach(() => {
 
 describe('completeSubtask', () => {
   it('uses canonical completion, writes the milestone note, then refreshes and calls the parent', async () => {
-    const { file, saveProjectData, getUpcomingSubtasks } = setup()
+    const { saveProjectData, getUpcomingSubtasks } = setup()
     vi.stubGlobal('document', {})
     const { completeSubtask } = await import('./completion')
     const onCompleted = vi.fn(() => {
       expect(getUpcomingSubtasks).toHaveBeenCalledTimes(1)
     })
     await completeSubtask(item, { onCompleted })
-    expect(file.tasks[0].subtasks[0]).toMatchObject({
+    const saved = saveProjectData.mock.calls[0][1] as ProjectData
+    expect(saved.tasks[0].subtasks[0]).toMatchObject({
       status: 'done',
       isCompleted: true,
       completedAt: expect.any(String)
     })
-    expect(file.tasks[0].subtasks[1]).toEqual({ id: 'other', title: 'Keep', isCompleted: false })
-    expect(saveProjectData).toHaveBeenCalledWith('p', file, [
-      { section: 'Milestones & Completed Work', note: 'Completed "Finish step" from Start Now.' }
-    ])
+    expect(saved.tasks[0].subtasks[1]).toEqual({ id: 'other', title: 'Keep', isCompleted: false })
+    expect(saveProjectData).toHaveBeenCalledWith(
+      'p',
+      saved,
+      [{ section: 'Milestones & Completed Work', note: 'Completed "Finish step" from Start Now.' }],
+      0
+    )
     expect(onCompleted).toHaveBeenCalledTimes(1)
     const { queueStore } = await import('./queue')
     expect(queueStore.getSnapshot().current).toBeNull()

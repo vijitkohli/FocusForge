@@ -201,11 +201,13 @@ describe('task page sections', () => {
         disabled: true,
         adjusting: true,
         onChange: noop,
-        onAdjust: noop
+        onAdjust: noop,
+        onStop: noop
       })
     )
     expect(markup).toContain('Change this plan')
-    expect(markup).toContain('Adjusting…')
+    expect(markup).toContain('Adjusting your plan…')
+    expect(markup).toContain('Stop')
     expect(markup).toContain('(Kept 2 completed steps so your progress isn&#x27;t lost.)')
     expect(markup).toContain('bg-bg-2')
   })
@@ -276,7 +278,7 @@ describe('manual task persistence with ledger notes', () => {
     })
     expect(saved.subtasks[1]).toEqual(task().subtasks[1])
     expect(disk().tasks[1]).toEqual({ ...task(), id: 'other' })
-    expect(save).toHaveBeenCalledWith('project', disk(), [note])
+    expect(save).toHaveBeenCalledWith('project', disk(), [note], 0)
   })
 
   it('does not report success when saveProjectData returns a failure flag', async () => {

@@ -10,6 +10,7 @@ interface StepListProps {
   onToggle: (id: string) => void
   onEdit: (id: string, title: string) => void
   onDelete: (id: string) => void
+  onSplit?: (id: string) => void
   onAdd: (title: string) => void
 }
 
@@ -101,6 +102,7 @@ export function StepList({
   onToggle,
   onEdit,
   onDelete,
+  onSplit,
   onAdd
 }: StepListProps): JSX.Element {
   return (
@@ -120,6 +122,7 @@ export function StepList({
             onToggle={onToggle}
             onEdit={onEdit}
             onDelete={onDelete}
+            onSplit={onSplit}
           />
         ))}
       </ol>

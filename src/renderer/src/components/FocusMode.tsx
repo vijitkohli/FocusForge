@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import { flushSync } from 'react-dom'
-import { Check, SkipForward, X } from 'lucide-react'
+import { Check, Scissors, SkipForward, X } from 'lucide-react'
 import { completeSubtask } from '../lib/completion'
 import { dayLabel, parseLocalDate } from '../lib/dates'
 import { focusTimer, useFocusTimer } from '../lib/focusTimer'
@@ -35,6 +35,8 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
   const [doneCount, setDoneCount] = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [splitting, setSplitting] = useState(false)
+  const [notice, setNotice] = useState('')
   const initialized = useRef(false)
   const completing = useRef(false)
 
@@ -73,6 +75,7 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
     completing.current = true
     setSaving(true)
     setError('')
+    setNotice('')
     const running = focusTimer.getSnapshot().running
     try {
       await completeSubtask(current, {
@@ -102,6 +105,7 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
     if (!current || completing.current || queue.loading) return
     const running = focusTimer.getSnapshot().running
     setError('')
+    setNotice('')
     queueStore.skip(current)
     const next = selectQueue(
       queueStore.getSnapshot(),
@@ -110,6 +114,34 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
     focusTimer.setStep(next ? queueKey(next) : null, next?.timeEstimate)
     if (running && next) focusTimer.play()
   }, [current, projectId, taskId, queue.loading])
+
+  const handleStuck = useCallback(async (): Promise<void> => {
+    if (!current || completing.current || queue.loading || splitting) return
+    const stuck = current
+    setSplitting(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await window.api.splitStep(stuck.projectId, stuck.taskId, stuck.subtaskId)
+      if (result.cancelled) return
+      const first = result.created?.[0]
+      if (!result.success || !first) {
+        setError(result.message || "Couldn't split this step. Try again.")
+        return
+      }
+      const next = { projectId: stuck.projectId, taskId: stuck.taskId, subtaskId: first.id }
+      // Keep the session's time and play state on the first smaller step.
+      if (focusTimer.getSnapshot().subtaskId === queueKey(stuck)) {
+        focusTimer.retarget(queueKey(next), first.timeEstimate)
+      }
+      await queueStore.refreshWithFront(next)
+      setNotice(result.message)
+    } catch {
+      setError("Couldn't reach the coach. Check that CLIProxyAPI is running, then try again.")
+    } finally {
+      setSplitting(false)
+    }
+  }, [current, queue.loading, splitting])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -136,7 +168,7 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
         )
       )
         return
-      if (!current || saving || queue.loading) return
+      if (!current || saving || splitting || queue.loading) return
       switch (event.key.toLowerCase()) {
         case ' ':
           event.preventDefault()
@@ -151,11 +183,24 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
           event.preventDefault()
           handleSkip()
           break
+        case 'b':
+          event.preventDefault()
+          void handleStuck()
+          break
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [current, saving, queue.loading, togglePlayback, handleDone, handleSkip])
+  }, [
+    current,
+    saving,
+    splitting,
+    queue.loading,
+    togglePlayback,
+    handleDone,
+    handleSkip,
+    handleStuck
+  ])
 
   const pendingInScope = queue.all.filter(
     (item) => !projectId || (item.projectId === projectId && item.taskId === taskId)
@@ -256,7 +301,7 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
                   variant="ghost"
                   leadingIcon={SkipForward}
                   onClick={handleSkip}
-                  disabled={saving || queue.loading}
+                  disabled={saving || splitting || queue.loading}
                   title="Skip (ArrowRight or S)"
                 >
                   Skip
@@ -273,7 +318,7 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
                   onClick={() => void handleDone()}
                   loading={saving}
                   loadingLabel="Saving completed step"
-                  disabled={queue.loading}
+                  disabled={queue.loading || splitting}
                   title="Done (Enter)"
                 >
                   Done
@@ -281,6 +326,29 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+                {splitting ? (
+                  <span role="status" className="meta flex items-center gap-2 text-fg-2">
+                    Making it smaller…
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void window.api.cancelSplitStep()}
+                    >
+                      Stop
+                    </Button>
+                  </span>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    leadingIcon={Scissors}
+                    onClick={() => void handleStuck()}
+                    disabled={saving || queue.loading}
+                    title="Split this step into smaller ones (B)"
+                  >
+                    Stuck? Make it smaller
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -290,6 +358,11 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
                 </Button>
                 <p className="meta text-fg-2 tabular-nums">{doneCount} done this session</p>
               </div>
+              {notice && !error && (
+                <p role="status" className="mt-5 text-center text-sm text-fg-2">
+                  {notice}
+                </p>
+              )}
               {(error || queue.error) && (
                 <div className="mt-5 text-center">
                   <p role="alert" className="text-sm text-fg-2">

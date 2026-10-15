@@ -2,6 +2,8 @@ import fs from 'fs-extra'
 import { UserProfileNote, UserProfileSection, USER_PROFILE_SECTIONS } from '../../common/types'
 import { USER_PROFILE_PATH, ProjectSummary } from './paths'
 import { appendUnderHeading, trimSectionBullets } from './markdownSections'
+import { writeFileAtomic } from './atomic'
+import { withLock } from './locks'
 
 // "Projects Overview" is machine-owned and always regenerated on prompt-read,
 // never a valid LLM note target — so it's absent from USER_PROFILE_SECTIONS.
@@ -27,7 +29,7 @@ export class ProfileStore {
   async readUserProfile(): Promise<string> {
     try {
       if (!(await fs.pathExists(USER_PROFILE_PATH))) {
-        await fs.outputFile(USER_PROFILE_PATH, emptyUserProfile())
+        await writeFileAtomic(USER_PROFILE_PATH, emptyUserProfile())
         return emptyUserProfile()
       }
       return await fs.readFile(USER_PROFILE_PATH, 'utf-8')
@@ -50,7 +52,7 @@ export class ProfileStore {
       }
     }
     try {
-      await fs.outputFile(USER_PROFILE_PATH, contents)
+      await withLock('profile', () => writeFileAtomic(USER_PROFILE_PATH, contents))
       return { success: true }
     } catch (error) {
       console.error('Failed to write user profile:', error)
@@ -61,12 +63,14 @@ export class ProfileStore {
   /** Appends LLM-extracted user facts under the appropriate section headings. */
   async appendUserProfileNotes(notes: UserProfileNote[]): Promise<void> {
     if (!notes || notes.length === 0) return
-    let contents = await this.readUserProfile()
-    for (const { section, note } of notes) {
-      if (!USER_PROFILE_SECTIONS.includes(section)) continue
-      contents = appendUnderHeading(contents, section, `- ${note.replace(/^- /, '')}`)
-    }
-    await fs.outputFile(USER_PROFILE_PATH, contents)
+    await withLock('profile', async () => {
+      let contents = await this.readUserProfile()
+      for (const { section, note } of notes) {
+        if (!USER_PROFILE_SECTIONS.includes(section)) continue
+        contents = appendUnderHeading(contents, section, `- ${note.replace(/^- /, '')}`)
+      }
+      await writeFileAtomic(USER_PROFILE_PATH, contents)
+    })
   }
 
   /**

@@ -77,3 +77,49 @@ describe('focus timer', () => {
     }
   })
 })
+
+describe('focus timer session end', () => {
+  it('reports time on the step it leaves, including a running session', () => {
+    const ended = vi.fn()
+    const stop = timer.onSessionEnd(ended)
+    timer.setStep('a', 10)
+    timer.play()
+    vi.advanceTimersByTime(42_000)
+    timer.setStep('b', 10)
+    expect(ended).toHaveBeenCalledExactlyOnceWith('a', 42)
+    stop()
+  })
+
+  it('does not report reset time, a re-set of the same step, or under a second', () => {
+    const ended = vi.fn()
+    const stop = timer.onSessionEnd(ended)
+    timer.setStep('a', 10)
+    timer.play()
+    vi.advanceTimersByTime(5000)
+    timer.reset()
+    timer.setStep('a', 20)
+    timer.setStep('b', 10)
+    expect(ended).not.toHaveBeenCalled()
+    stop()
+  })
+})
+
+describe('focus timer retarget', () => {
+  it('moves the running session to another step without reporting or resetting it', () => {
+    const ended = vi.fn()
+    const stop = timer.onSessionEnd(ended)
+    timer.setStep('parent', 20)
+    timer.play()
+    vi.advanceTimersByTime(90_000)
+    timer.retarget('child', 5)
+    expect(timer.getSnapshot()).toMatchObject({
+      subtaskId: 'child',
+      estimateMinutes: 5,
+      running: true
+    })
+    vi.advanceTimersByTime(10_000)
+    timer.setStep('other', 10)
+    expect(ended).toHaveBeenCalledExactlyOnceWith('child', 100)
+    stop()
+  })
+})

@@ -31,6 +31,7 @@ export function UserProfile(): JSX.Element {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
+  const [backupError, setBackupError] = useState<string | null>(null)
   const [aiPending, setAiPending] = useState(false)
   const writePending = useRef(false)
   const aiWritePending = useRef(false)
@@ -77,6 +78,16 @@ export function UserProfile(): JSX.Element {
     } finally {
       writePending.current = false
       setSaving(false)
+    }
+  }
+
+  async function openBackups(): Promise<void> {
+    setBackupError(null)
+    try {
+      const result = await window.api.openBackupsFolder()
+      if (!result.success) setBackupError(`Couldn't open the backups folder. ${result.error ?? ''}`)
+    } catch {
+      setBackupError("Couldn't open the backups folder.")
     }
   }
 
@@ -247,6 +258,27 @@ export function UserProfile(): JSX.Element {
             setAiPending(pending)
           }}
         />
+
+        <section
+          className="space-y-3 border-t border-line pt-6"
+          aria-labelledby="profile-backups-title"
+        >
+          <h2 id="profile-backups-title" className="text-lg font-bold tracking-[-0.01em] text-fg-1">
+            Backups
+          </h2>
+          <p className="max-w-[72ch] text-sm leading-[1.55] text-fg-2">
+            Each day, the first change to a project saves a copy of how it looked before. The last
+            14 days are kept. Erasing all data removes these too.
+          </p>
+          {backupError && (
+            <p role="alert" className="text-sm text-hard">
+              {backupError}
+            </p>
+          )}
+          <Button leadingIcon={FolderOpen} onClick={() => void openBackups()}>
+            Show backups folder
+          </Button>
+        </section>
 
         <section
           className="space-y-3 border-t border-line pt-6"

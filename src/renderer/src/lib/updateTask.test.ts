@@ -45,7 +45,8 @@ describe('updateTask', () => {
     expect(save).toHaveBeenCalledExactlyOnceWith(
       'project',
       { ...file, tasks: [other, { ...target, title: 'New title' }] },
-      [note]
+      [note],
+      0
     )
   })
 
@@ -114,6 +115,36 @@ describe('updateTask', () => {
     ).rejects.toBe(failure)
     expect(save).not.toHaveBeenCalled()
     expect(file).toEqual(before)
+  })
+
+  it('re-applies the change to the fresh file when a concurrent save wins', async () => {
+    const stale: ProjectData = { rev: 4, tasks: [task('target')] }
+    const fresh: ProjectData = {
+      rev: 5,
+      tasks: [{ ...task('target'), subtasks: [{ id: 'step', title: 'Ticked', isCompleted: true }] }]
+    }
+    const { load, save } = setup(stale)
+    load.mockResolvedValueOnce(stale).mockResolvedValueOnce(fresh)
+    save
+      .mockResolvedValueOnce({ success: false, conflict: true })
+      .mockResolvedValueOnce({ success: true, rev: 6 })
+    await updateTask('project', 'target', (current) => ({ ...current, title: 'Renamed' }), note)
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save.mock.calls[0][3]).toBe(4)
+    expect(save.mock.calls[1][3]).toBe(5)
+    expect(save.mock.calls[1][1].tasks[0]).toMatchObject({
+      title: 'Renamed',
+      subtasks: [{ title: 'Ticked', isCompleted: true }]
+    })
+  })
+
+  it('gives up after three conflicting saves', async () => {
+    const { save } = setup({ rev: 1, tasks: [task('target')] })
+    save.mockResolvedValue({ success: false, conflict: true, error: 'This project changed' })
+    await expect(updateTask('project', 'target', (current) => current, note)).rejects.toThrow(
+      'This project changed'
+    )
+    expect(save).toHaveBeenCalledTimes(3)
   })
 
   it('propagates a rejected save', async () => {

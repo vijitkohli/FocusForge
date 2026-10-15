@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { ArrowLeft, NotebookText, Play, Trash2 } from 'lucide-react'
+import { ArrowLeft, NotebookText, Play, Repeat, Repeat1, Trash2 } from 'lucide-react'
 import type { ProjectTask } from 'src/common/types'
 import { deadlineLabel, parseLocalDate } from '../../lib/dates'
 import { Button, DateInput, Menu } from '../../ui'
@@ -15,6 +15,10 @@ interface TaskHeaderProps {
   onNotes: () => void
   onDelete: () => void
   onDeadline: (deadline: string) => void
+  /** Whether this task belongs to an active weekly series. */
+  repeating?: boolean
+  onRepeat?: () => void
+  onStopRepeating?: () => void
 }
 
 export function TaskHeader({
@@ -25,7 +29,10 @@ export function TaskHeader({
   onPlay,
   onNotes,
   onDelete,
-  onDeadline
+  onDeadline,
+  repeating = false,
+  onRepeat,
+  onStopRepeating
 }: TaskHeaderProps): JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(task.deadline)
@@ -75,6 +82,26 @@ export function TaskHeader({
             label="Task options"
             disabled={disabled}
             items={[
+              ...(onRepeat
+                ? [
+                    {
+                      id: 'repeat',
+                      label: repeating ? 'Change weekly repeat…' : 'Repeat weekly…',
+                      icon: Repeat,
+                      onSelect: onRepeat
+                    }
+                  ]
+                : []),
+              ...(repeating && onStopRepeating
+                ? [
+                    {
+                      id: 'stop-repeat',
+                      label: 'Stop repeating',
+                      icon: Repeat1,
+                      onSelect: onStopRepeating
+                    }
+                  ]
+                : []),
               { id: 'delete', label: 'Delete task', icon: Trash2, danger: true, onSelect: onDelete }
             ]}
           />

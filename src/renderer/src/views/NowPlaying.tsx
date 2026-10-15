@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react'
-import { Check, Disc3, SkipForward } from 'lucide-react'
+import { Check, Clock, Disc3, SkipForward } from 'lucide-react'
 import { localDateKey } from 'src/common/schedule'
 import { queueKey, queueStore, useQueue } from '../lib/queue'
 import { completeSubtask } from '../lib/completion'
@@ -11,6 +11,8 @@ import type { NavigationProps } from '../shell/navigation'
 import { Momentum } from '../components/Momentum'
 import { MoodFilter, CarriedOver } from '../components/QueueControls'
 import { TrackRow } from '../components/TrackRow'
+import { TodayPlan } from '../components/TodayPlan'
+import { useTodayPlan } from '../lib/todayPlan'
 import { Scrubber } from '../components/Scrubber'
 
 export function NowPlaying({
@@ -19,9 +21,11 @@ export function NowPlaying({
   onOpenFocus
 }: NavigationProps): JSX.Element {
   const queue = useQueue()
+  const plan = useTodayPlan()
   const timer = useFocusTimer()
   const current = queue.current
   const [saving, setSaving] = useState(false)
+  const [planningToday, setPlanningToday] = useState(false)
   const [error, setError] = useState('')
   const [hasProjects, setHasProjects] = useState(true)
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 1099px)').matches)
@@ -201,19 +205,40 @@ export function NowPlaying({
             )}
           </section>
           <aside className="min-w-0">
-            <h2 className="section-title mb-3">Up next</h2>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="section-title">Up next</h2>
+              {!plan && !planningToday && queue.items.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leadingIcon={Clock}
+                  onClick={() => setPlanningToday(true)}
+                >
+                  Plan today
+                </Button>
+              )}
+            </div>
             <MoodFilter />
             <div className="mt-4">
-              {queue.items.slice(1, 7).map((item, i) => (
-                <TrackRow
-                  key={queueKey(item)}
-                  item={item}
-                  transitionName={i === 0 ? 'queue-0' : undefined}
-                  onOpen={() => onOpenProject(item.projectId, item.taskId)}
-                />
-              ))}
-              {queue.items.length < 2 && (
-                <p className="py-5 text-sm text-fg-3">Your next steps will appear here.</p>
+              <TodayPlan
+                onOpen={(projectId, taskId) => onOpenProject(projectId, taskId)}
+                formOpen={planningToday}
+                onCloseForm={() => setPlanningToday(false)}
+              />
+              {!plan && (
+                <>
+                  {queue.items.slice(1, 7).map((item, i) => (
+                    <TrackRow
+                      key={queueKey(item)}
+                      item={item}
+                      transitionName={i === 0 ? 'queue-0' : undefined}
+                      onOpen={() => onOpenProject(item.projectId, item.taskId)}
+                    />
+                  ))}
+                  {queue.items.length < 2 && (
+                    <p className="py-5 text-sm text-fg-3">Your next steps will appear here.</p>
+                  )}
+                </>
               )}
             </div>
             <CarriedOver />

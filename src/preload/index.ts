@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { ChatTurnPayload, DecompositionResult, LedgerNote, ProjectData } from '../common/types'
 import { AppSettings } from '../common/models'
+import type { OutlineAssessment } from '../common/outline'
+import type { TodayPlan } from '../common/today'
 
 // Custom APIs for renderer
 const api = {
@@ -20,6 +22,27 @@ const api = {
     ipcRenderer.on('chat-stream', listener)
     return () => ipcRenderer.removeListener('chat-stream', listener)
   },
+
+  // Stop buttons: kill this window's in-flight coach turn or plan adjustment.
+  // The pending call then resolves as cancelled.
+  cancelChatTurn: () => ipcRenderer.invoke('cancel-engine-call', 'chat'),
+  cancelPlanAdjustment: () => ipcRenderer.invoke('cancel-engine-call', 'adjust'),
+  cancelSplitStep: () => ipcRenderer.invoke('cancel-engine-call', 'split'),
+  cancelCourseOutline: () => ipcRenderer.invoke('cancel-engine-call', 'outline'),
+
+  // Course outline import: pick + read a PDF (resolves null if the picker is
+  // closed), then save the assessments the user confirmed as unplanned tasks.
+  readCourseOutline: () => ipcRenderer.invoke('read-course-outline'),
+  importAssessments: (
+    projectId: string,
+    source: string,
+    course: string,
+    items: (OutlineAssessment & { dueDate: string })[]
+  ) => ipcRenderer.invoke('import-assessments', projectId, source, course, items),
+
+  // "Stuck?": replaces one step with 2-3 smaller ones suggested by the coach
+  splitStep: (projectId: string, taskId: string, subtaskId: string) =>
+    ipcRenderer.invoke('split-step', projectId, taskId, subtaskId),
 
   // Opens a native file picker, extracts text, and persists it straight
   // into the project's context_<projectId>.md ledger (no ephemeral one-turn context)
@@ -51,8 +74,14 @@ const api = {
 
   createProject: (name: string) => ipcRenderer.invoke('create-project', name),
 
-  saveProjectData: (projectId: string, data: ProjectData, notes?: LedgerNote[]) =>
-    ipcRenderer.invoke('save-project-data', projectId, data, notes),
+  // `expectedRev` (the rev you loaded) makes the save fail with `conflict: true`
+  // instead of overwriting a write that landed in between.
+  saveProjectData: (
+    projectId: string,
+    data: ProjectData,
+    notes?: LedgerNote[],
+    expectedRev?: number
+  ) => ipcRenderer.invoke('save-project-data', projectId, data, notes, expectedRev),
 
   loadProjectData: (projectId: string) => ipcRenderer.invoke('load-project-data', projectId),
 
@@ -86,8 +115,50 @@ const api = {
   // Completion activity across all projects: streak counts + per-day heatmap
   getActivityStats: () => ipcRenderer.invoke('get-activity-stats'),
 
+  // Median Focus time vs estimate across recent steps (null until enough data)
+  getEstimateAccuracy: () => ipcRenderer.invoke('get-estimate-accuracy'),
+
   // Persisted app settings (model choices, AI nudges) in system/settings.json
   getSettings: () => ipcRenderer.invoke('get-settings'),
+
+  // Repeat a task weekly (weekday 0-6 until a date) or stop (weekday null)
+  setRecurrence: (projectId: string, taskId: string, weekday: number | null, until: string) =>
+    ipcRenderer.invoke('set-recurrence', projectId, taskId, weekday, until),
+
+  // Background changes to tasks (e.g. a weekly copy was created): reload views
+  onTasksChanged: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('tasks-changed', listener)
+    return () => ipcRenderer.removeListener('tasks-changed', listener)
+  },
+
+  // Weekly reviews, newest first
+  listReviews: () => ipcRenderer.invoke('list-reviews'),
+
+  // A new weekly review was written; History reloads the card
+  onReviewsChanged: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('reviews-changed', listener)
+    return () => ipcRenderer.removeListener('reviews-changed', listener)
+  },
+
+  // The weekly-review notification was clicked: show History
+  onOpenHistory: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('open-history', listener)
+    return () => ipcRenderer.removeListener('open-history', listener)
+  },
+
+  // "Plan today" set for the current local day (null when none or from another day)
+  getTodayPlan: () => ipcRenderer.invoke('get-today-plan'),
+  saveTodayPlan: (plan: TodayPlan | null) => ipcRenderer.invoke('save-today-plan', plan),
+
+  // Save dialog for an .ics file built in the renderer
+  saveCalendarFile: (fileName: string, contents: string) =>
+    ipcRenderer.invoke('save-calendar-file', fileName, contents),
+
+  // Reveals system/backups (daily snapshots) in Finder
+  openBackupsFolder: () => ipcRenderer.invoke('open-backups-folder'),
 
   // Merges a partial update into the stored settings; resolves with the result
   saveSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke('save-settings', patch),

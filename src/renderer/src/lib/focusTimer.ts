@@ -11,12 +11,22 @@ export interface FocusTimerStore {
   getSnapshot(): FocusTimerSnapshot
   subscribe(listener: () => void): () => void
   setStep(subtaskId: string | null, estimateMinutes?: number): void
+  /**
+   * Fires when the timer moves to a different step, with the time spent on the
+   * one it left. `reset()` discards time instead of reporting it.
+   */
+  onSessionEnd(listener: SessionEndListener): () => void
+  /** Moves the current session (elapsed time, play state) onto another step, e.g. after a split. */
+  retarget(subtaskId: string, estimateMinutes?: number): void
   play(): void
   pause(): void
   reset(): void
 }
 
+export type SessionEndListener = (subtaskId: string, seconds: number) => void
+
 const listeners = new Set<() => void>()
+const sessionEndListeners = new Set<SessionEndListener>()
 let snapshot: FocusTimerSnapshot = {
   subtaskId: null,
   estimateMinutes: 15,
@@ -56,9 +66,25 @@ export const focusTimer: FocusTimerStore = {
       if (estimate !== snapshot.estimateMinutes) publish({ estimateMinutes: estimate })
       return
     }
+    const leaving = snapshot.subtaskId
+    const spentMs = elapsedMs + (snapshot.running ? performance.now() - startedAt : 0)
     stopInterval()
     elapsedMs = 0
     publish({ subtaskId, estimateMinutes: estimate, elapsed: 0, running: false })
+    if (leaving !== null && spentMs >= 1000) {
+      const seconds = Math.floor(spentMs / 1000)
+      sessionEndListeners.forEach((listener) => listener(leaving, seconds))
+    }
+  },
+  retarget(subtaskId, estimateMinutes = 15) {
+    const estimate = Number.isFinite(estimateMinutes) && estimateMinutes > 0 ? estimateMinutes : 15
+    publish({ subtaskId, estimateMinutes: estimate })
+  },
+  onSessionEnd(listener) {
+    sessionEndListeners.add(listener)
+    return () => {
+      sessionEndListeners.delete(listener)
+    }
   },
   play() {
     if (snapshot.running || snapshot.subtaskId === null) return
