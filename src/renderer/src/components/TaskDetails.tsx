@@ -10,6 +10,7 @@ import {
 } from 'src/common/types'
 import { KanbanBoard } from './KanbanBoard'
 import { updateTask } from '../lib/updateTask'
+import { overdueSubtasks, redistributeSchedule, rescheduleOverdue } from 'src/common/schedule'
 
 interface TaskDetailProps {
   task: ProjectTask
@@ -181,36 +182,6 @@ export function TaskDetail({
     })
   }
 
-  /**
-   * Proportionally re-spreads incomplete subtasks' scheduledDate across
-   * today -> newDeadline (same shape as the AI's original distribution),
-   * so changing the deadline doesn't leave stale dates past/before it.
-   * Completed subtasks keep their original date - they're done.
-   */
-  const redistributeSchedule = (items: Subtask[], newDeadline: string): Subtask[] => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const end = new Date(newDeadline)
-    end.setHours(0, 0, 0, 0)
-
-    const incomplete = items.filter((s) => !s.isCompleted)
-    const totalDays = Math.max(
-      1,
-      Math.round((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-    )
-
-    let i = 0
-    return items.map((s) => {
-      if (s.isCompleted) return s
-      const slot =
-        incomplete.length <= 1 ? totalDays : Math.round((i / (incomplete.length - 1)) * totalDays)
-      i += 1
-      const scheduled = new Date(today)
-      scheduled.setDate(scheduled.getDate() + Math.min(slot, totalDays))
-      return { ...s, scheduledDate: scheduled.toISOString().split('T')[0] }
-    })
-  }
-
   const commitDeadlineChange = async (): Promise<void> => {
     setEditingDeadline(false)
     if (deadline === task.deadline) return
@@ -229,6 +200,19 @@ export function TaskDetail({
     } finally {
       setSaving(false)
     }
+  }
+
+  /**
+   * "I fell behind" recovery: slide overdue steps forward onto the days left
+   * before the deadline (no engine call), instead of leaving a wall of red.
+   */
+  const replanOverdue = (): void => {
+    const { subtasks: updated, moved } = rescheduleOverdue(subtasks, deadline)
+    if (moved === 0) return
+    persistSubtasks(updated, {
+      section: 'Plan Adjustments',
+      note: `Re-planned ${moved} overdue step${moved === 1 ? '' : 's'} forward from today.`
+    })
   }
 
   const toggleSubtask = (id: string) => {
@@ -328,6 +312,8 @@ export function TaskDetail({
     }
   }
 
+  const overdueCount = overdueSubtasks(subtasks).length
+
   // Prerequisites count toward one honest progress number alongside subtasks.
   const allItems = subtasks.length + prerequisites.length
   const completedCount =
@@ -390,6 +376,24 @@ export function TaskDetail({
             <Burndown subtasks={subtasks} createdAt={task.createdAt} deadline={deadline} />
           </div>
 
+          {/* FELL-BEHIND RECOVERY — supportive, one click, no guilt */}
+          {overdueCount > 0 && (
+            <div className="flex shrink-0 items-center gap-3 rounded-xl border border-medium/30 bg-medium/10 px-4 py-3">
+              <p className="flex-1 text-sm text-fg-1">
+                {overdueCount} step{overdueCount === 1 ? '' : 's'} slipped past{' '}
+                {overdueCount === 1 ? 'its' : 'their'} planned day. That&apos;s normal — want to fit{' '}
+                {overdueCount === 1 ? 'it' : 'them'} into the days ahead?
+              </p>
+              <button
+                onClick={replanOverdue}
+                disabled={saving}
+                className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:bg-accent-hover disabled:opacity-50"
+              >
+                Re-plan from today
+              </button>
+            </div>
+          )}
+
           {/* PREREQUISITES — learn / acquire / set up before the steps */}
           {prerequisites.length > 0 && (
             <div className="shrink-0 rounded-xl border border-accent/30 bg-accent-soft p-4">
@@ -409,6 +413,9 @@ export function TaskDetail({
                     <span className={p.isCompleted ? 'text-fg-3 line-through' : 'text-fg-1'}>
                       {p.title}
                     </span>
+                    {p.timeEstimate ? (
+                      <span className="text-xs text-fg-3">{p.timeEstimate} min</span>
+                    ) : null}
                   </label>
                 ))}
               </div>

@@ -12,3 +12,7 @@ engine/chroma_db
 
 # Local agent/editor tooling
 .claude
+engine/evals/results
+__pycache__
+# eval write-ups stay local
+engine/evals/*.md

@@ -26,7 +26,12 @@ export class Nudger {
     private analytics: Analytics
   ) {}
 
-  async getNudge(): Promise<{ title: string; body: string } | null> {
+  async getNudge(): Promise<{
+    title: string
+    body: string
+    subject: string
+    reason: 'overdue' | 'idle'
+  } | null> {
     const hour = new Date().getHours()
     if (hour < 8 || hour >= 22) return null // quiet hours
 
@@ -42,11 +47,14 @@ export class Nudger {
     }
     const alreadyNudged = (key: string): boolean => log[key] === todayKey
 
-    // 1. Most overdue incomplete step (upcoming is sorted soonest-first).
-    let pick: { key: string; name: string } | null = null
-    const mostUrgent = upcoming[0]
-    if (mostUrgent.daysRemaining < 0 && !alreadyNudged(`sub:${mostUrgent.subtaskId}`)) {
-      pick = { key: `sub:${mostUrgent.subtaskId}`, name: mostUrgent.subtaskTitle }
+    // 1. Most overdue incomplete step not yet nudged today (upcoming is sorted
+    //    soonest-first, so the first match is the most overdue).
+    let pick: { key: string; name: string; reason: 'overdue' | 'idle' } | null = null
+    const overdue = upcoming.find(
+      (s) => s.daysRemaining < 0 && !alreadyNudged(`sub:${s.subtaskId}`)
+    )
+    if (overdue) {
+      pick = { key: `sub:${overdue.subtaskId}`, name: overdue.subtaskTitle, reason: 'overdue' }
     }
 
     // 2. Otherwise, a project with open work that's gone quiet.
@@ -60,7 +68,7 @@ export class Nudger {
         .filter((p) => !alreadyNudged(`proj:${p.id}`))
         .sort((a, b) => new Date(a.lastActive).getTime() - new Date(b.lastActive).getTime())
       if (stale.length > 0) {
-        pick = { key: `proj:${stale[0].id}`, name: stale[0].name }
+        pick = { key: `proj:${stale[0].id}`, name: stale[0].name, reason: 'idle' }
       }
     }
 
@@ -74,6 +82,11 @@ export class Nudger {
     }
 
     const template = NUDGE_TEMPLATES[Math.floor(Math.random() * NUDGE_TEMPLATES.length)]
-    return { title: 'Flow State', body: template.replace('{name}', pick.name) }
+    return {
+      title: 'Flow State',
+      body: template.replace('{name}', pick.name),
+      subject: pick.name,
+      reason: pick.reason
+    }
   }
 }

@@ -6,12 +6,9 @@ import icon from '../../resources/icon.png?asset'
 
 import { PythonShell } from 'python-shell'
 import { FileSystemManager } from './fs-manager'
-import {
-  reconcileSubtasks,
-  reconcilePrerequisites,
-  DecompositionResult,
-  ProjectData
-} from '../common/types'
+import { DecompositionResult, ProjectData } from '../common/types'
+import { mergeChecklist, requestsRemovingCompleted } from '../common/merge'
+import { loadSettings, saveSettings } from './settings'
 
 const fsManager = new FileSystemManager()
 
@@ -53,6 +50,46 @@ function resolvePython(): string {
 const PYTHON_PATH = resolvePython()
 
 const NUDGE_INTERVAL_MS = 1000 * 60 * 60 * 6 // re-check every 6 hours while running
+const NUDGE_AI_TIMEOUT_MS = 25000
+
+/**
+ * Optionally rewrites the template nudge copy with the LLM (engine/nudge.py) so
+ * it fits the user's profile and streak. Which item to nudge is still decided
+ * deterministically by getNudge(); on any failure or timeout the template
+ * body is used, so a nudge is never lost to a flaky model call.
+ */
+async function personaliseNudge(nudge: {
+  body: string
+  subject: string
+  reason: 'overdue' | 'idle'
+}): Promise<string> {
+  try {
+    const settings = await loadSettings()
+    if (!settings.aiNudges) return nudge.body
+
+    const [userProfile, stats] = await Promise.all([
+      fsManager.readUserProfileForPrompt(),
+      fsManager.getActivityStats()
+    ])
+    const call = runPythonWithStdin('nudge.py', {
+      draft: nudge.body,
+      subject: nudge.subject,
+      reason: nudge.reason,
+      currentStreak: stats.currentStreak,
+      userProfile,
+      model: settings.chatModel
+    })
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), NUDGE_AI_TIMEOUT_MS)
+    )
+    const result = await Promise.race([call, timeout])
+    const body = typeof result?.body === 'string' ? result.body.trim() : ''
+    return body || nudge.body
+  } catch (err) {
+    console.error('Nudge personalisation failed, using template', err)
+    return nudge.body
+  }
+}
 
 /**
  * Asks the FS manager whether a gentle nudge is warranted (quiet hours +
@@ -65,7 +102,10 @@ async function maybeNudge(): Promise<void> {
     const nudge = await fsManager.getNudge()
     if (!nudge) return
 
-    const notification = new Notification({ title: nudge.title, body: nudge.body })
+    const notification = new Notification({
+      title: nudge.title,
+      body: await personaliseNudge(nudge)
+    })
     notification.on('click', () => {
       if (!mainWindow) return
       if (mainWindow.isMinimized()) mainWindow.restore()
@@ -248,6 +288,10 @@ function createWindow(): void {
 
   ipcMain.handle('get-activity-stats', () => fsManager.getActivityStats())
 
+  ipcMain.handle('get-settings', () => loadSettings())
+
+  ipcMain.handle('save-settings', (_event, patch) => saveSettings(patch))
+
   ipcMain.handle('reset-all-data', async () => {
     const { response } = await dialog.showMessageBox({
       type: 'warning',
@@ -286,7 +330,13 @@ app.whenReady().then(() => {
         fsManager.readContextLedgerForPrompt(payload.projectId),
         fsManager.readUserProfileForPrompt()
       ])
-      const enrichedPayload = { ...payload, contextLedger, userProfile }
+      const settings = await loadSettings()
+      const enrichedPayload = {
+        ...payload,
+        contextLedger,
+        userProfile,
+        planModel: settings.planModel || undefined
+      }
 
       // Stream the clarifying question token-by-token back to this renderer.
       // Durable facts arrive on a trailing `notes` line (after the reply is
@@ -368,9 +418,10 @@ app.whenReady().then(() => {
       model: string
     ) => {
       try {
-        const [contextLedger, userProfile] = await Promise.all([
+        const [contextLedger, userProfile, settings] = await Promise.all([
           fsManager.readContextLedgerForPrompt(projectId),
-          fsManager.readUserProfileForPrompt()
+          fsManager.readUserProfileForPrompt(),
+          loadSettings()
         ])
         const response = await runPythonWithStdin('main.py', {
           projectId,
@@ -378,6 +429,9 @@ app.whenReady().then(() => {
           deadline,
           depth,
           model,
+          // Use the CURRENT settings, not the model the task was created with
+          // (which may be a provider the user no longer has set up).
+          planModel: settings.planModel || settings.chatModel,
           contextLedger,
           userProfile,
           currentChecklist
@@ -389,24 +443,41 @@ app.whenReady().then(() => {
 
         const file: ProjectData = (await fsManager.loadProjectData(projectId)) || { tasks: [] }
         const task = (file.tasks ?? []).find((t) => t.id === taskId)
+        const notes = [...(response.notes ?? [])]
+        let message = response.message
         if (task) {
-          // Carry over completion/board progress for steps that survive the
-          // rewrite, so an AI plan adjustment doesn't wipe what's already done.
-          task.subtasks = reconcileSubtasks(task.subtasks ?? [], response.data.subtasks ?? [])
-          task.prerequisites = reconcilePrerequisites(
-            task.prerequisites ?? [],
-            response.data.prerequisites ?? []
+          // Merge onto the on-disk state (fresher than the renderer's snapshot)
+          // so ticks, completedAt and kanban columns survive the restructure.
+          const merged = mergeChecklist(
+            { subtasks: task.subtasks ?? [], prerequisites: task.prerequisites ?? [] },
+            {
+              subtasks: response.data.subtasks ?? [],
+              prerequisites: response.data.prerequisites ?? []
+            },
+            { allowDropCompleted: requestsRemovingCompleted(request) }
           )
+          task.subtasks = merged.subtasks
+          task.prerequisites = merged.prerequisites
+
+          const restored = [...merged.restoredSubtasks, ...merged.restoredPrerequisites]
+          if (restored.length > 0) {
+            const titles = restored.map((r) => `"${r.title}"`).join(', ')
+            notes.push({
+              section: 'Plan Adjustments',
+              note: `Kept completed item(s) the AI dropped: ${titles}.`
+            })
+            message = `${message} (Kept ${restored.length} completed step${restored.length === 1 ? '' : 's'} so your progress isn't lost.)`
+          }
         }
 
-        await fsManager.saveProjectData(projectId, file, response.notes)
+        await fsManager.saveProjectData(projectId, file, notes)
         if (response.userNotes && response.userNotes.length > 0) {
           await fsManager.appendUserProfileNotes(response.userNotes)
         }
 
         return {
           success: true,
-          message: response.message,
+          message,
           subtasks: task?.subtasks ?? [],
           prerequisites: task?.prerequisites ?? []
         }

@@ -96,7 +96,12 @@ export class FileSystemManager {
   }
 
   // --- Nudges ---
-  getNudge(): Promise<{ title: string; body: string } | null> {
+  getNudge(): Promise<{
+    title: string
+    body: string
+    subject: string
+    reason: 'overdue' | 'idle'
+  } | null> {
     return this.nudger.getNudge()
   }
 }

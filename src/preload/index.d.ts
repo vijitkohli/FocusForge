@@ -10,6 +10,7 @@ import {
   UpcomingSubtask,
   ActivityStats
 } from '../common/types'
+import { AppSettings } from '../common/models'
 
 declare global {
   interface Window {
@@ -61,6 +62,8 @@ declare global {
       resetAllData: () => Promise<{ success: boolean; error?: string; canceled?: boolean }>
       getUpcomingSubtasks: () => Promise<UpcomingSubtask[]>
       getActivityStats: () => Promise<ActivityStats>
+      getSettings: () => Promise<AppSettings>
+      saveSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>
       onOpenFocus: (callback: () => void) => () => void
     }
   }

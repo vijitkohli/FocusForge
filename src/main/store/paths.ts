@@ -43,3 +43,13 @@ export function localDateKey(d: Date): string {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+/**
+ * Parses a deadline/scheduledDate as LOCAL midnight. `new Date('YYYY-MM-DD')`
+ * is UTC midnight, which lands on the previous local day west of UTC.
+ */
+export function parseLocalDate(value: string): Date {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value)
+  d.setHours(0, 0, 0, 0)
+  return d
+}

@@ -1,6 +1,6 @@
 import fs from 'fs-extra'
 import { LedgerNote, LedgerSection, LEDGER_SECTIONS } from '../../common/types'
-import { ledgerPath, legacyLedgerPath } from './paths'
+import { ledgerPath, legacyLedgerPath, localDateKey } from './paths'
 import { appendUnderHeading, trimSectionBullets } from './markdownSections'
 
 export function emptyLedgerContents(): string {
@@ -80,7 +80,7 @@ export class LedgerStore {
    */
   async appendLedgerNotes(projectId: string, notes: LedgerNote[]): Promise<void> {
     let contents = await this.readContextLedger(projectId)
-    const timestamp = new Date().toISOString().split('T')[0]
+    const timestamp = localDateKey(new Date())
     for (const { section, note } of notes) {
       contents = appendUnderHeading(contents, section, `- [${timestamp}] ${note}`)
     }

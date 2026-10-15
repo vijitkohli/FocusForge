@@ -3,7 +3,7 @@
 #
 # Reads one JSON payload from stdin:
 #   { "messages": [{role, content}, ...], "deadline": "YYYY-MM-DD",
-#     "depth": "Brief"|"Deep", "model": "...", "contextLedger": "<context_<projectId>.md text>",
+#     "depth": "Brief"|"Deep", "model": "...", "planModel": "..." (optional), "contextLedger": "<context_<projectId>.md text>",
 #     "currentChecklist": {originalTask, subtasks} | null }
 #
 # Prints one JSON object to stdout:
@@ -12,10 +12,13 @@
 
 import sys, os, json
 from litellm import completion
+from litellm.exceptions import BadRequestError
 from dotenv import load_dotenv
 from datetime import datetime
 
-DEFAULT_MODEL = "gemini/gemini-2.5-flash-lite"
+load_dotenv()
+
+DEFAULT_MODEL = "cliproxy/gemini-3-flash"
 MAX_CLARIFYING_TURNS = 5
 
 # Local LLM (Ollama) support: any model prefixed "ollama/" is routed to a local
@@ -23,23 +26,60 @@ MAX_CLARIFYING_TURNS = 5
 # with OLLAMA_API_BASE in engine/.env if it isn't on the default port.
 OLLAMA_API_BASE = os.getenv("OLLAMA_API_BASE", "http://localhost:11434")
 
+# CLIProxyAPI support: any model prefixed "cliproxy/" is sent to a local
+# CLIProxyAPI server, which exposes an OpenAI-compatible endpoint backed by
+# subscription OAuth logins (no per-provider API keys or their rate limits).
+CLIPROXY_API_BASE = os.getenv("CLIPROXY_API_BASE", "http://localhost:8317/v1")
+CLIPROXY_API_KEY = os.getenv("CLIPROXY_API_KEY", "")
+
 
 def _complete(**kwargs):
     """
-    Thin wrapper around litellm.completion that injects Ollama-specific config
-    for local models so every call site stays provider-agnostic. For ollama/*
-    models it sets api_base and raises the default context window (num_ctx),
-    since our prompts (ledger + profile + transcript) can be long.
+    Thin wrapper around litellm.completion that injects provider-specific
+    config so every call site stays provider-agnostic. For ollama/* models it
+    sets api_base and raises the default context window (num_ctx), since our
+    prompts (ledger + profile + transcript) can be long. For cliproxy/* models
+    it rewrites to LiteLLM's generic OpenAI-compatible route.
     """
     model = kwargs.get("model", "")
     if isinstance(model, str) and model.startswith("ollama/"):
         kwargs["api_base"] = OLLAMA_API_BASE
         kwargs["num_ctx"] = 8192
-    return completion(**kwargs)
+    elif isinstance(model, str) and model.startswith("cliproxy/"):
+        kwargs["model"] = "openai/" + model[len("cliproxy/"):]
+        kwargs["api_base"] = CLIPROXY_API_BASE
+        kwargs["api_key"] = CLIPROXY_API_KEY
+    try:
+        return completion(**kwargs)
+    except BadRequestError:
+        # Some backends (e.g. gpt-oss via CLIProxyAPI) reject response_format
+        # outright. Every caller already asks for raw JSON in the prompt and
+        # parses tolerantly, so retry once without it.
+        if "response_format" not in kwargs:
+            raise
+        kwargs.pop("response_format")
+        return completion(**kwargs)
+
+
+def _parse_json(content):
+    """
+    Parses a model's JSON reply. Not every backend enforces response_format
+    (CLIProxyAPI passes it through loosely), so tolerate ```json fences and
+    prose around the object by falling back to the outermost {...} span.
+    """
+    text = (content or "").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end <= start:
+            raise
+        return json.loads(text[start:end + 1])
 
 # Maps a model prefix to the env var LiteLLM needs. ollama/* is local (no key).
 _PROVIDER_KEYS = [
     ("ollama/", None, None),
+    ("cliproxy/", "CLIPROXY_API_KEY", "CLIProxyAPI"),
     ("gemini", "GEMINI_API_KEY", "Google Gemini"),
     ("gpt", "OPENAI_API_KEY", "OpenAI"),
     ("openai/", "OPENAI_API_KEY", "OpenAI"),
@@ -69,6 +109,24 @@ def _missing_api_key(model_name):
     return None  # unknown provider — let LiteLLM decide
 
 
+# Shared by both clarification passes. Derived from engine/evals: models
+# over-asked on trivial/urgent tasks, asked for details only needed mid-task,
+# and bundled two questions into one.
+CLARIFY_RULES = (
+    "WHEN YOU MUST ASK (overrides everything below): the user hasn't said WHAT the outcome is - "
+    "e.g. an essay/report/project with no topic, question, or brief; 'study' or 'get my life together' "
+    "with no subject or goal; a large assignment (due in 3+ days) with no hint of its requirements or "
+    "what they've done so far. A generic plan here is useless, so ask.\n"
+    "WHEN NOT TO ASK (signal readiness instead):\n"
+    "  - The deadline is today or tomorrow: momentum matters more than detail.\n"
+    "  - It's a simple chore, errand, or message (clean a room, reply to an email, book an appointment).\n"
+    "  - The only missing details are ones the user would naturally look up WHILE doing the task "
+    "(exact amounts, account numbers, page counts) - make those a step instead of asking.\n"
+    "HOW TO ASK: exactly ONE short question - one sentence, one question mark, under 25 words, "
+    "never two questions joined by 'and'/'or'. Prefer what most changes the plan: success criteria, "
+    "scope, or what's making it hard to start.\n"
+)
+
 LEDGER_SECTIONS = [
     "Constraints & Specifications",
     "Document Excerpts",
@@ -81,8 +139,6 @@ USER_PROFILE_SECTIONS = [
     "Preferences",
     "Patterns & Friction"
 ]
-
-load_dotenv()
 
 
 def _user_turn_count(messages):
@@ -157,6 +213,221 @@ def _sanitize_user_notes(raw_notes):
     return clean
 
 
+def run_execution_phase(messages, deadline_str, days_remaining, depth, context_ledger, user_profile, model_name):
+    """
+    Expanded version of the original single-shot decomposition prompt, but
+    grounded in the full clarification dialogue and the project's context
+    ledger instead of a bare title - so already-completed work and known
+    constraints are never re-derived as new subtasks.
+    """
+    transcript = _conversation_transcript(messages)
+    profile_block = _user_profile_block(user_profile)
+    ledger_block = _ledger_block(context_ledger)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    system_instruction = (
+        "You are an expert Productivity Coach focused on building momentum. "
+        "Your goal is to break ANY user intent into a 'No-Fail' execution checklist.\n\n"
+        "Your goal is to break a large scary task into tiny, non-threatening micro-steps "
+        "that make the user want to start IMMEDIATELY.\n\n"
+
+        f"{profile_block}"
+        f"--- CONTEXT ---\n"
+        f"CURRENT DATE: {today_str}\n"
+        f"DEADLINE: {deadline_str} ({days_remaining} days remaining)\n"
+        f"DEPTH: {depth} (If 'Deep', provide detailed 5-10 min increments. If 'Brief', high-level milestones).\n"
+        f"{ledger_block}\n"
+        "--- FULL INTAKE CONVERSATION ---\n"
+        "Use everything revealed in this conversation AND in the context ledger above "
+        "(grading criteria, tools, dependencies, friction points, and anything already "
+        "marked complete) to make the checklist specific, not generic.\n"
+        f"{transcript}\n\n"
+
+        "--- CRITICAL INSTRUCTIONS ---\n"
+        "1. LEARN -> DO SEPARATION (Gap Analysis): Analyze the request for things the user must "
+        "   LEARN, ACQUIRE, or SET UP *before* the real work can start, and put those in a separate "
+        "   `prerequisites` array - NOT in `subtasks`. A prerequisite is knowledge/resources/environment "
+        "   (e.g. 'Watch lecture 4 on recursion' [learn], 'Buy masking tape' [acquire], 'Install Node.js' "
+        "   [setup]). The `subtasks` are the actual execution steps that follow. If there are genuinely no "
+        "   prerequisites, return an empty `prerequisites` array.\n"
+        "2. THE 10-MINUTE RULE: Break 'big' nebulous tasks into concrete, low-friction actions. "
+        "   Avoid vague verbs like 'Study' or 'Work on'. Use specific verbs like 'Read Chapter 1', 'Write Introduction', 'Email X'.\n"
+        "3. LOGICAL FLOW: Start with setup/prep tasks (momentum builders), then moving to core work, then review/polishing.\n"
+        "4. QUANTITY: 'Deep' = 10-15 subtasks, 'Brief' = 4-6 subtasks. These are hard limits - "
+        "   merge related steps rather than exceeding them.\n"
+        "5. SCHEDULING: Distribute tasks logically across the available days. Do not dump everything on the deadline.\n"
+        "6. STRICT TIME-BOXING: Every subtask must have a realistic integer timeEstimate in minutes. "
+        "   'Deep': 5-20 minutes each. 'Brief': at most 60 minutes each. If a step would take longer, "
+        "   SPLIT it - never just raise the estimate.\n"
+        "7. NO REDUNDANT WORK: If the context ledger says something is already done, do not "
+        "   include it (or an equivalent step OR prerequisite) in the checklist again.\n"
+        "8. THE FIRST STEP IS THE MOST IMPORTANT: subtasks[0] must take 5 minutes or less, require "
+        "   zero decisions (e.g. 'Open the assignment spec and read the first page'), and be "
+        f"   scheduled for CURRENT DATE ({today_str}).\n"
+        "9. PREREQUISITES ARE SMALL: each prerequisite is at most 15 minutes. Substantial work "
+        "   (finding sources, reading chapters, building things) belongs in `subtasks`, not here.\n\n"
+
+        "--- JSON FORMAT ---\n"
+        "Return ONLY a raw JSON object with this exact structure:\n"
+        "{\n"
+        '  "originalTask": "string — a short, human-readable restatement of the user\'s actual task '
+        '(e.g. \'Finish Quiz 4\', \'Write the introduction\'); NEVER an instruction to yourself '
+        'such as \'Build the final checklist now.\' or any similar phrase",\n'
+        '  "prerequisites": [\n'
+        '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup", "timeEstimate": integer_minutes }\n'
+        '  ],\n'
+        '  "subtasks": [\n'
+        '    {\n'
+        '      "id": "1",\n'
+        '      "title": "Micro-step title",\n'
+        '      "difficulty": "easy/medium/hard",\n'
+        '      "timeEstimate": integer_minutes,\n'
+        '      "scheduledDate": "YYYY-MM-DD"\n'
+        '    }\n'
+        '  ]\n'
+        "}"
+    )
+
+    response = _complete(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": "Build the final checklist now."}
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.7,
+        num_retries=1
+    )
+
+    content = response.choices[0].message.content
+    parsed = _parse_json(content)
+    # Guard: if the model echoed the engine's own instruction string, blank it
+    # so the renderer falls back to the user's actual first message.
+    _BAD_TITLES = {"build the final checklist now", "apply the adjustment now"}
+    original = parsed.get("originalTask", "")
+    if original.strip().lower().rstrip(".!?") in _BAD_TITLES:
+        parsed["originalTask"] = ""
+    return parsed
+
+
+def _checklist_for_prompt(checklist):
+    """
+    Compact view of the current checklist for the mutation prompt: keeps ids
+    and a per-item "status" (done/doing/todo) so the model knows what's
+    finished, and drops noise like completedAt timestamps.
+    """
+    def subtask_view(s):
+        status = s.get("status") or ("done" if s.get("isCompleted") else "todo")
+        view = {"id": s.get("id"), "title": s.get("title"), "status": status}
+        for key in ("difficulty", "timeEstimate", "scheduledDate"):
+            if s.get(key) is not None:
+                view[key] = s[key]
+        return view
+
+    def prereq_view(p):
+        view = {"id": p.get("id"), "title": p.get("title"), "status": "done" if p.get("isCompleted") else "todo"}
+        if p.get("kind"):
+            view["kind"] = p["kind"]
+        return view
+
+    checklist = checklist or {}
+    return {
+        "originalTask": checklist.get("originalTask", ""),
+        "prerequisites": [prereq_view(p) for p in checklist.get("prerequisites") or [] if isinstance(p, dict)],
+        "subtasks": [subtask_view(s) for s in checklist.get("subtasks") or [] if isinstance(s, dict)]
+    }
+
+
+def run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name):
+    """
+    Reshapes an existing checklist on request (e.g. "make this shorter",
+    "expand step 3"). Returns a complete replacement subtask list rather
+    than a patch, but the main process merges it back onto the user's progress
+    by id (falling back to title), so the model is told which steps are done
+    and must keep ids stable for anything it keeps.
+    """
+    latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+    profile_block = _user_profile_block(user_profile)
+    ledger_block = _ledger_block(context_ledger)
+    checklist_json = json.dumps(_checklist_for_prompt(current_checklist))
+
+    system_instruction = (
+        "You are an expert Productivity Coach. The user already has a checklist for "
+        "their task and is asking you to adjust it. Apply their request faithfully "
+        "while respecting all known project constraints from the context ledger.\n\n"
+        f"{profile_block}"
+        f"--- CURRENT CHECKLIST ---\n{checklist_json}\n\n"
+        f"{ledger_block}\n"
+        f"--- USER'S ADJUSTMENT REQUEST ---\n{latest_request}\n\n"
+        "--- INSTRUCTIONS ---\n"
+        "1. Return the FULL replacement checklist (not just the changed parts).\n"
+        "2. Keep the same level of time-boxing and specificity as the original.\n"
+        "3. Do not reintroduce anything the context ledger says is already done.\n"
+        "4. PRESERVE the `prerequisites` (learn/acquire/setup) from the current checklist unless the "
+        "   request is specifically about them - do not silently drop the learn phase.\n"
+        "5. Briefly summarize what you changed in `message` (e.g. 'Condensed from 11 to 6 steps').\n"
+        "6. IDS ARE HOW THE USER'S PROGRESS IS TRACKED. For every step or prerequisite you keep or only "
+        "   lightly edit, reuse its EXACT existing `id`. Give genuinely new steps NEW ids that do not appear "
+        "   anywhere in the current checklist (e.g. 'new-1', 'new-2') - never renumber or recycle ids.\n"
+        "7. Items with \"status\": \"done\" are finished work. Keep every one of them in your output with its "
+        "   id and title unchanged, and do not merge, split or reword them - only adjust the remaining steps. "
+        "   Drop a done item only if the user explicitly asks to remove completed work. Do not count done "
+        "   steps against a 'make it shorter' request.\n\n"
+        "--- JSON FORMAT ---\n"
+        "Return ONLY a raw JSON object with this exact structure:\n"
+        "{\n"
+        '  "message": "string - short summary of what changed",\n'
+        '  "originalTask": "string",\n'
+        '  "prerequisites": [\n'
+        '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup", "timeEstimate": integer_minutes }\n'
+        '  ],\n'
+        '  "subtasks": [\n'
+        '    {\n'
+        '      "id": "1",\n'
+        '      "title": "Micro-step title",\n'
+        '      "difficulty": "easy/medium/hard",\n'
+        '      "timeEstimate": integer_minutes,\n'
+        '      "scheduledDate": "YYYY-MM-DD"\n'
+        '    }\n'
+        '  ]\n'
+        "}"
+    )
+
+    response = _complete(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": "Apply the adjustment now."}
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.6,
+        num_retries=1
+    )
+
+    content = response.choices[0].message.content
+    parsed = _parse_json(content)
+    summary = parsed.pop("message", "Plan updated.")
+    return summary, parsed
+
+
+CLARIFY_SENTINEL = "__READY__"
+NO_FOLLOWUP_SENTINEL = "DO NOT ASK FOLLOW UP QUESTIONS"
+
+
+def _user_wants_no_followup(messages):
+    """
+    True if any user message ends with the skip phrase. Tolerant of case and
+    trailing punctuation/whitespace (e.g. "...do not ask follow up questions.").
+    """
+    for m in messages:
+        if m.get("role") != "user":
+            continue
+        text = m.get("content", "").strip().upper().rstrip(".!?;: \t\n")
+        if text.endswith(NO_FOLLOWUP_SENTINEL):
+            return True
+    return False
+
+
 def extract_turn_notes(messages, deadline_str, days_remaining, context_ledger, user_profile, model_name):
     """
     Fact-extraction pass for a conversation turn. The clarifying question is
@@ -214,182 +485,10 @@ def extract_turn_notes(messages, deadline_str, days_remaining, context_ledger, u
     )
 
     content = response.choices[0].message.content
-    parsed = json.loads(content)
+    parsed = _parse_json(content)
     notes = _sanitize_notes(parsed.get("notes", []))
     user_notes = _sanitize_user_notes(parsed.get("userNotes", []))
     return notes, user_notes
-
-
-def run_execution_phase(messages, deadline_str, days_remaining, depth, context_ledger, user_profile, model_name):
-    """
-    Expanded version of the original single-shot decomposition prompt, but
-    grounded in the full clarification dialogue and the project's context
-    ledger instead of a bare title - so already-completed work and known
-    constraints are never re-derived as new subtasks.
-    """
-    transcript = _conversation_transcript(messages)
-    profile_block = _user_profile_block(user_profile)
-    ledger_block = _ledger_block(context_ledger)
-    today_str = datetime.now().strftime("%Y-%m-%d")
-
-    system_instruction = (
-        "You are an expert Productivity Coach focused on building momentum. "
-        "Your goal is to break ANY user intent into a 'No-Fail' execution checklist.\n\n"
-        "Your goal is to break a large scary task into tiny, non-threatening micro-steps "
-        "that make the user want to start IMMEDIATELY.\n\n"
-
-        f"{profile_block}"
-        f"--- CONTEXT ---\n"
-        f"CURRENT DATE: {today_str}\n"
-        f"DEADLINE: {deadline_str} ({days_remaining} days remaining)\n"
-        f"DEPTH: {depth} (If 'Deep', provide detailed 5-10 min increments. If 'Brief', high-level milestones).\n"
-        f"{ledger_block}\n"
-        "--- FULL INTAKE CONVERSATION ---\n"
-        "Use everything revealed in this conversation AND in the context ledger above "
-        "(grading criteria, tools, dependencies, friction points, and anything already "
-        "marked complete) to make the checklist specific, not generic.\n"
-        f"{transcript}\n\n"
-
-        "--- CRITICAL INSTRUCTIONS ---\n"
-        "1. LEARN -> DO SEPARATION (Gap Analysis): Analyze the request for things the user must "
-        "   LEARN, ACQUIRE, or SET UP *before* the real work can start, and put those in a separate "
-        "   `prerequisites` array - NOT in `subtasks`. A prerequisite is knowledge/resources/environment "
-        "   (e.g. 'Watch lecture 4 on recursion' [learn], 'Buy masking tape' [acquire], 'Install Node.js' "
-        "   [setup]). The `subtasks` are the actual execution steps that follow. If there are genuinely no "
-        "   prerequisites, return an empty `prerequisites` array.\n"
-        "2. THE 10-MINUTE RULE: Break 'big' nebulous tasks into concrete, low-friction actions. "
-        "   Avoid vague verbs like 'Study' or 'Work on'. Use specific verbs like 'Read Chapter 1', 'Write Introduction', 'Email X'.\n"
-        "3. LOGICAL FLOW: Start with setup/prep tasks (momentum builders), then moving to core work, then review/polishing.\n"
-        "4. QUANTITY: Provide at least 10+ subtasks if Depth is 'Deep' or 5 subtasks if Depth is 'Brief'. \n"
-        "5. SCHEDULING: Distribute tasks logically across the available days. Do not dump everything on the deadline.\n"
-        "6. STRICT TIME-BOXING: Every subtask must have a realistic timeEstimate in minutes; "
-        "   keep individual steps small enough to start without dread.\n"
-        "7. NO REDUNDANT WORK: If the context ledger says something is already done, do not "
-        "   include it (or an equivalent step) in the checklist again.\n\n"
-
-        "--- JSON FORMAT ---\n"
-        "Return ONLY a raw JSON object with this exact structure:\n"
-        "{\n"
-        '  "originalTask": "string — a short, human-readable restatement of the user\'s actual task '
-        '(e.g. \'Finish Quiz 4\', \'Write the introduction\'); NEVER an instruction to yourself '
-        'such as \'Build the final checklist now.\' or any similar phrase",\n'
-        '  "prerequisites": [\n'
-        '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup" }\n'
-        '  ],\n'
-        '  "subtasks": [\n'
-        '    {\n'
-        '      "id": "1",\n'
-        '      "title": "Micro-step title",\n'
-        '      "difficulty": "easy/medium/hard",\n'
-        '      "timeEstimate": integer_minutes,\n'
-        '      "scheduledDate": "YYYY-MM-DD"\n'
-        '    }\n'
-        '  ]\n'
-        "}"
-    )
-
-    response = _complete(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": "Build the final checklist now."}
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.7,
-        num_retries=1
-    )
-
-    content = response.choices[0].message.content
-    parsed = json.loads(content)
-    # Guard: if the model echoed the engine's own instruction string, blank it
-    # so the renderer falls back to the user's actual first message.
-    _BAD_TITLES = {"build the final checklist now", "apply the adjustment now"}
-    original = parsed.get("originalTask", "")
-    if original.strip().lower().rstrip(".!?") in _BAD_TITLES:
-        parsed["originalTask"] = ""
-    return parsed
-
-
-def run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name):
-    """
-    Reshapes an existing checklist on request (e.g. "make this shorter",
-    "expand step 3"). Returns a complete replacement subtask list rather
-    than a patch - merge semantics on an AI-restructured plan are far more
-    error-prone than just re-rendering a fresh list.
-    """
-    latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-    profile_block = _user_profile_block(user_profile)
-    ledger_block = _ledger_block(context_ledger)
-    checklist_json = json.dumps(current_checklist)
-
-    system_instruction = (
-        "You are an expert Productivity Coach. The user already has a checklist for "
-        "their task and is asking you to adjust it. Apply their request faithfully "
-        "while respecting all known project constraints from the context ledger.\n\n"
-        f"{profile_block}"
-        f"--- CURRENT CHECKLIST ---\n{checklist_json}\n\n"
-        f"{ledger_block}\n"
-        f"--- USER'S ADJUSTMENT REQUEST ---\n{latest_request}\n\n"
-        "--- INSTRUCTIONS ---\n"
-        "1. Return the FULL replacement checklist (not just the changed parts).\n"
-        "2. Keep the same level of time-boxing and specificity as the original.\n"
-        "3. Do not reintroduce anything the context ledger says is already done.\n"
-        "4. PRESERVE the `prerequisites` (learn/acquire/setup) from the current checklist unless the "
-        "   request is specifically about them - do not silently drop the learn phase.\n"
-        "5. Briefly summarize what you changed in `message` (e.g. 'Condensed from 11 to 6 steps').\n\n"
-        "--- JSON FORMAT ---\n"
-        "Return ONLY a raw JSON object with this exact structure:\n"
-        "{\n"
-        '  "message": "string - short summary of what changed",\n'
-        '  "originalTask": "string",\n'
-        '  "prerequisites": [\n'
-        '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup" }\n'
-        '  ],\n'
-        '  "subtasks": [\n'
-        '    {\n'
-        '      "id": "1",\n'
-        '      "title": "Micro-step title",\n'
-        '      "difficulty": "easy/medium/hard",\n'
-        '      "timeEstimate": integer_minutes,\n'
-        '      "scheduledDate": "YYYY-MM-DD"\n'
-        '    }\n'
-        '  ]\n'
-        "}"
-    )
-
-    response = _complete(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": "Apply the adjustment now."}
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.6,
-        num_retries=1
-    )
-
-    content = response.choices[0].message.content
-    parsed = json.loads(content)
-    summary = parsed.pop("message", "Plan updated.")
-    return summary, parsed
-
-
-CLARIFY_SENTINEL = "__READY__"
-NO_FOLLOWUP_SENTINEL = "DO NOT ASK FOLLOW UP QUESTIONS"
-
-
-def _user_wants_no_followup(messages):
-    """
-    True if any user message ends with the skip phrase. Tolerant of case and
-    trailing punctuation/whitespace (e.g. "...do not ask follow up questions.").
-    """
-    for m in messages:
-        if m.get("role") != "user":
-            continue
-        text = m.get("content", "").strip().upper().rstrip(".!?;: \t\n")
-        if text.endswith(NO_FOLLOWUP_SENTINEL):
-            return True
-    return False
 
 
 def run_clarification_streaming(messages, deadline_str, days_remaining, context_ledger, user_profile, model_name, emit):
@@ -400,9 +499,8 @@ def run_clarification_streaming(messages, deadline_str, days_remaining, context_
     build the checklist. Tokens are buffered until the sentinel is ruled out, so
     a readiness signal never flashes on screen. Returns (ready, question).
 
-    Note: unlike the structured clarification pass, this path does not extract
-    per-turn ledger `notes` or `userNotes` - the streamed reply is plain prose.
-    Stated facts still reach the engine via the saved conversation + context ledger.
+    The streamed reply is plain prose, so per-turn ledger `notes`/`userNotes`
+    are extracted separately by extract_turn_notes (run concurrently).
     """
     transcript = _conversation_transcript(messages)
     profile_block = _user_profile_block(user_profile)
@@ -414,6 +512,7 @@ def run_clarification_streaming(messages, deadline_str, days_remaining, context_
         "Find the single most important missing piece of information (grading criteria, "
         "required tools, hidden dependencies, scope, or personal friction) and ask ONE "
         "specific, open-ended question in plain prose.\n\n"
+        f"{CLARIFY_RULES}\n"
         f"If you already have enough to build a genuinely useful, specific checklist, reply "
         f"with EXACTLY this and nothing else: {CLARIFY_SENTINEL}\n\n"
         "Reply with plain text only - no JSON, no preamble.\n\n"
@@ -432,7 +531,8 @@ def run_clarification_streaming(messages, deadline_str, days_remaining, context_
             {"role": "user", "content": "Ask your next question, or reply with the readiness sentinel."}
         ],
         stream=True,
-        temperature=0.6,
+        # Low temperature: the ask-vs-ready decision flipped between samples at 0.6.
+        temperature=0.2,
         num_retries=1
     )
 
@@ -475,13 +575,16 @@ def handle_chat_turn_streaming(payload, emit):
     deadline_str = payload.get("deadline", datetime.now().strftime("%Y-%m-%d"))
     depth = payload.get("depth", "Brief")
     model_name = payload.get("model") or DEFAULT_MODEL
+    # Optional stronger model for building/adjusting the checklist itself;
+    # the intake questions keep using the (faster) chat model.
+    plan_model = payload.get("planModel") or model_name
     context_ledger = payload.get("contextLedger")
     user_profile = payload.get("userProfile")
     current_checklist = payload.get("currentChecklist")
 
     _today_str, resolved_deadline_str, days_remaining = _resolve_deadline(deadline_str)
 
-    key_error = _missing_api_key(model_name)
+    key_error = _missing_api_key(model_name) or _missing_api_key(plan_model)
     if key_error:
         emit({"type": "result", "status": "error", "message": key_error, "data": None, "notes": [], "userNotes": []})
         return
@@ -498,7 +601,7 @@ def handle_chat_turn_streaming(payload, emit):
             if notes or user_notes:
                 emit({"type": "notes", "notes": notes, "userNotes": user_notes})
         except Exception as e:
-            print(f"turn-note extraction failed: {e}")
+            print(f"turn-note extraction failed: {e}", file=sys.stderr)
 
     try:
         if current_checklist:
@@ -519,7 +622,7 @@ def handle_chat_turn_streaming(payload, emit):
             # ready -> fall through to execution (no tokens for the checklist)
 
         result = run_execution_phase(
-            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, model_name
+            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, plan_model
         )
         emit({
             "type": "result",
@@ -533,7 +636,7 @@ def handle_chat_turn_streaming(payload, emit):
     except Exception as e:
         emit({
             "type": "result",
-            "status": "clarifying",
+            "status": "error",
             "message": f"Something went wrong on my end ({str(e)}). Could you try that again?",
             "data": None,
             "notes": [],
@@ -551,11 +654,12 @@ def handle_chat_turn(payload):
     """
     messages = payload.get("messages", [])
     model_name = payload.get("model") or DEFAULT_MODEL
+    plan_model = payload.get("planModel") or model_name
     context_ledger = payload.get("contextLedger")
     user_profile = payload.get("userProfile")
     current_checklist = payload.get("currentChecklist")
 
-    key_error = _missing_api_key(model_name)
+    key_error = _missing_api_key(plan_model)
     if key_error:
         return {"status": "error", "message": key_error, "data": None, "notes": [], "userNotes": []}
 
@@ -570,7 +674,7 @@ def handle_chat_turn(payload):
 
     try:
         latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-        summary, new_checklist = run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name)
+        summary, new_checklist = run_mutation_phase(messages, current_checklist, context_ledger, user_profile, plan_model)
         return {
             "status": "updated",
             "message": summary,
