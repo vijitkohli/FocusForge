@@ -1,200 +1,279 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { USER_PROFILE_SECTIONS } from 'src/common/types'
+import { useEffect, useRef, useState, type JSX } from 'react'
+import { ChevronRight, FolderOpen, UserRound } from 'lucide-react'
+import { parseLedger } from '../lib/ledger'
+import { buildProfile, parseProfile, type ProfileSections } from '../lib/profileSections'
+import { Button, EmptyState, Skeleton, Textarea } from '../ui'
 import { AISettings } from './AISettings'
 
-const REQUIRED_SECTIONS = USER_PROFILE_SECTIONS.map((s) => `## ${s}`)
+const PROFILE_FIELDS = [
+  { section: 'About Me', label: 'About you' },
+  { section: 'Preferences', label: 'Preferences' },
+  { section: 'Patterns & Friction', label: 'What gets in your way' }
+] as const
 
-export function UserProfile(): React.JSX.Element {
-  const [contents, setContents] = useState('')
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+function plainText(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, '$1$2')
+    .replace(/\*([^*]+)\*|_([^_]+)_|`([^`]+)`/g, '$1$2$3')
+    .replace(/^#{1,6}\s+/gm, '')
+}
+
+export function UserProfile(): JSX.Element {
+  const [profile, setProfile] = useState(() => parseProfile(''))
+  const [draft, setDraft] = useState<ProfileSections>(profile.sections)
   const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [retry, setRetry] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const text = await window.api.readUserProfile()
-      setContents(text)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const [aiPending, setAiPending] = useState(false)
+  const writePending = useRef(false)
+  const aiWritePending = useRef(false)
 
   useEffect(() => {
-    load()
-  }, [load])
-
-  function startEdit() {
-    setDraft(contents)
-    setSaveError(null)
-    setEditing(true)
-  }
-
-  function cancelEdit() {
-    setEditing(false)
-    setSaveError(null)
-  }
-
-  async function save() {
-    const missing = REQUIRED_SECTIONS.filter((h) => !draft.includes(h))
-    if (missing.length > 0) {
-      setSaveError(`Missing required section(s): ${missing.join(', ')}`)
-      return
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+    void window.api
+      .readUserProfile()
+      .then((text) => {
+        if (cancelled) return
+        const parsed = parseProfile(text)
+        setProfile(parsed)
+        setDraft(parsed.sections)
+        setLoaded(true)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled)
+          setLoadError(cause instanceof Error ? cause.message : "Couldn't load your profile.")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
+  }, [retry])
+
+  async function save(): Promise<void> {
+    if (!loaded || writePending.current || aiWritePending.current) return
+    writePending.current = true
     setSaving(true)
+    setSaved(false)
     setSaveError(null)
     try {
-      const result = await window.api.saveUserProfile(draft)
-      if (!result.success) {
-        setSaveError(result.error ?? 'Save failed.')
-      } else {
-        setContents(draft)
-        setEditing(false)
-      }
+      const markdown = buildProfile(draft, profile.overview)
+      const result = await window.api.saveUserProfile(markdown)
+      if (!result.success) throw new Error(result.error || "Couldn't save your profile.")
+      setProfile({ sections: { ...draft }, overview: profile.overview })
+      setSaved(true)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : "Couldn't save your profile.")
     } finally {
+      writePending.current = false
       setSaving(false)
     }
   }
 
-  async function handleReset() {
-    const confirmed = window.confirm(
-      'This will permanently erase all projects, tasks, context, and your profile. Are you sure?'
-    )
-    if (!confirmed) return
+  async function handleReset(): Promise<void> {
+    if (writePending.current || aiWritePending.current) return
+    writePending.current = true
     setResetting(true)
     setResetError(null)
     try {
       const result = await window.api.resetAllData()
       if (result.canceled) return
-      if (!result.success) {
-        setResetError(result.error ?? 'Reset failed.')
-        return
-      }
+      if (!result.success) throw new Error(result.error || "Couldn't erase your data.")
       window.location.reload()
+    } catch (cause) {
+      setResetError(cause instanceof Error ? cause.message : "Couldn't erase your data.")
     } finally {
+      writePending.current = false
       setResetting(false)
     }
   }
 
-  // Split the profile into the user-editable block and the auto-generated overview
-  function splitProfile(text: string): { editable: string; overview: string } {
-    const overviewIdx = text.indexOf('## Projects Overview')
-    if (overviewIdx === -1) return { editable: text, overview: '' }
-    return {
-      editable: text.slice(0, overviewIdx).trimEnd(),
-      overview: text.slice(overviewIdx)
-    }
-  }
-
-  const { editable, overview } = splitProfile(contents)
+  const busy = saving || resetting || aiPending
+  const dirty = PROFILE_FIELDS.some(({ section }) => draft[section] !== profile.sections[section])
+  const empty = PROFILE_FIELDS.every(({ section }) => !draft[section].trim())
+  const overview = parseLedger(profile.overview).map((section) => ({
+    ...section,
+    entries: section.entries.filter(
+      (entry) => entry.text.trim() && plainText(entry.text).trim() !== '(auto-generated)'
+    )
+  }))
+  const hasOverview = overview.some((section) => section.entries.length > 0)
 
   return (
-    <div className="flex flex-col gap-6 p-6 overflow-y-auto h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-fg-1">User Profile</h2>
-          <p className="text-sm text-fg-3 mt-0.5">
-            Injected into every AI call — helps the coach adapt to you.
+    <div className="h-full overflow-y-auto bg-bg-1 px-6 py-8">
+      <div className="mx-auto max-w-[720px] space-y-8">
+        <header>
+          <h1 className="text-[32px] leading-[1.15] font-bold tracking-[-0.02em] text-fg-1">You</h1>
+          <p className="mt-2 text-sm leading-[1.55] text-fg-2">
+            Help the coach adapt to you. These details are shared with every AI call.
           </p>
-        </div>
-        {!editing && (
-          <button
-            onClick={startEdit}
-            className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition"
-          >
-            Edit
-          </button>
-        )}
-      </div>
+        </header>
 
-      {loading ? (
-        <div className="text-fg-3 text-sm">Loading…</div>
-      ) : editing ? (
-        /* Edit mode — only the user-editable sections */
-        <div className="flex flex-col gap-3">
-          <p className="text-xs text-fg-3">
-            Keep the three headings (<code className="text-accent">## About Me</code>,{' '}
-            <code className="text-accent">## Preferences</code>,{' '}
-            <code className="text-accent">## Patterns &amp; Friction</code>). The{' '}
-            <em>Projects Overview</em> section is auto-generated and shown read-only below.
-          </p>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            className="glass w-full rounded-xl px-4 py-3 font-mono text-sm text-fg-1 outline-none focus:ring-1 focus:ring-accent resize-none"
-            rows={18}
-          />
-          {saveError && <p className="text-sm text-red-400">{saveError}</p>}
-          <div className="flex gap-2">
-            <button
-              onClick={save}
-              disabled={saving}
-              className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              onClick={cancelEdit}
-              className="rounded-full px-4 py-2 text-sm font-medium text-fg-2 hover:bg-surface transition"
-            >
-              Cancel
-            </button>
+        {loading ? (
+          <div
+            role="status"
+            aria-label="Loading your profile"
+            aria-busy="true"
+            className="space-y-4"
+          >
+            {PROFILE_FIELDS.map(({ section }) => (
+              <div key={section} className="space-y-2">
+                <Skeleton width="35%" height={18} />
+                <Skeleton height={112} />
+              </div>
+            ))}
           </div>
-          {/* Auto-generated section shown read-only even in edit mode */}
-          {overview && (
-            <div className="glass rounded-xl px-4 py-3 mt-2">
-              <p className="text-xs text-fg-3 mb-2 italic">Auto-generated — do not edit</p>
-              <pre className="font-mono text-xs text-fg-2 whitespace-pre-wrap">{overview}</pre>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Read mode */
-        <div className="flex flex-col gap-4">
-          <div className="glass rounded-xl px-4 py-3">
-            <pre className="font-mono text-sm text-fg-1 whitespace-pre-wrap">
-              {editable || '(empty — click Edit to add your profile)'}
-            </pre>
+        ) : loadError ? (
+          <div role="alert" className="space-y-3 rounded-md bg-bg-2 p-4">
+            <p className="text-sm text-hard">{loadError}</p>
+            <Button onClick={() => setRetry((value) => value + 1)}>Retry loading</Button>
           </div>
-          {overview && (
-            <div className="glass rounded-xl px-4 py-3">
-              <p className="text-xs text-fg-3 mb-2 italic">
-                Auto-generated — refreshed on every AI call
+        ) : loaded ? (
+          <section className="space-y-5" aria-label="Your profile">
+            {empty && (
+              <EmptyState
+                icon={UserRound}
+                title="Tell the coach about you"
+                description="Add what matters to you below. You can change it whenever you like."
+                className="py-4"
+              />
+            )}
+            <fieldset disabled={busy} className="space-y-5">
+              {PROFILE_FIELDS.map(({ section, label }) => (
+                <Textarea
+                  key={section}
+                  label={label}
+                  value={draft[section]}
+                  onChange={(event) => {
+                    setDraft((current) => ({ ...current, [section]: event.target.value }))
+                    setSaved(false)
+                    setSaveError(null)
+                  }}
+                />
+              ))}
+              {saveError && (
+                <p role="alert" className="text-sm text-hard">
+                  {saveError}
+                </p>
+              )}
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="primary"
+                  loading={saving}
+                  loadingLabel="Saving your profile"
+                  disabled={busy || (!dirty && !saveError)}
+                  onClick={() => void save()}
+                >
+                  {saveError ? 'Retry saving' : 'Save changes'}
+                </Button>
+                {saved && (
+                  <span role="status" className="text-sm text-easy">
+                    Saved
+                  </span>
+                )}
+              </div>
+            </fieldset>
+            <details className="group rounded-md border border-line p-4">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-fg-2 hover:text-fg-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+                <ChevronRight
+                  size={16}
+                  aria-hidden="true"
+                  className="transition-transform group-open:rotate-90 motion-reduce:transition-none"
+                />
+                What the coach knows about your projects
+              </summary>
+              <p className="mt-3 text-[12.5px] text-fg-3">
+                Read-only. Refreshed when the coach uses your profile.
               </p>
-              <pre className="font-mono text-sm text-fg-2 whitespace-pre-wrap">{overview}</pre>
-            </div>
-          )}
-        </div>
-      )}
-      <AISettings />
+              {hasOverview ? (
+                <div className="mt-4 space-y-4">
+                  {overview.map((section, index) => (
+                    <section key={index}>
+                      {section.heading && (
+                        <h3 className="mb-2 text-sm font-medium text-fg-1">
+                          {plainText(section.heading)}
+                        </h3>
+                      )}
+                      <ul className="space-y-3">
+                        {section.entries.map((entry, entryIndex) => {
+                          const text = plainText(entry.text)
+                          const colon = entry.bullet ? text.indexOf(': ') : -1
+                          return (
+                            <li
+                              key={entryIndex}
+                              className="text-sm leading-[1.55] whitespace-pre-wrap break-words text-fg-2"
+                            >
+                              {colon > 0 ? (
+                                <>
+                                  <p className="font-medium text-fg-1">{text.slice(0, colon)}</p>
+                                  <p>{text.slice(colon + 2)}</p>
+                                </>
+                              ) : (
+                                text
+                              )}
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={FolderOpen}
+                  title="No project overview yet"
+                  description="The coach builds this overview as you work on your projects."
+                  className="py-6"
+                />
+              )}
+            </details>
+          </section>
+        ) : null}
 
-      {/* Danger Zone */}
-      <div className="mt-auto pt-6 border-t border-border">
-        <p className="text-xs font-semibold uppercase tracking-widest text-fg-3 mb-3">
-          Danger Zone
-        </p>
-        <div className="glass rounded-xl px-4 py-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-fg-1">Reset app / Erase all data</p>
-            <p className="text-xs text-fg-3 mt-0.5">
-              Permanently deletes every project, task, context ledger, and this profile. Cannot be
-              undone.
+        <AISettings
+          disabled={saving || resetting}
+          onPendingChange={(pending) => {
+            aiWritePending.current = pending
+            setAiPending(pending)
+          }}
+        />
+
+        <section
+          className="space-y-3 border-t border-line pt-6"
+          aria-labelledby="profile-reset-title"
+        >
+          <h2 id="profile-reset-title" className="text-lg font-bold tracking-[-0.01em] text-fg-1">
+            Reset
+          </h2>
+          <p className="max-w-[72ch] text-sm leading-[1.55] text-fg-2">
+            Permanently deletes every project, task, context ledger, and your profile. This cannot
+            be undone.
+          </p>
+          {resetError && (
+            <p role="alert" className="text-sm text-hard">
+              {resetError} Try again below.
             </p>
-            {resetError && <p className="text-xs text-red-400 mt-1">{resetError}</p>}
-          </div>
-          <button
-            onClick={handleReset}
-            disabled={resetting}
-            className="shrink-0 rounded-full border border-red-500/50 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 transition disabled:opacity-50"
+          )}
+          <Button
+            variant="danger"
+            loading={resetting}
+            loadingLabel="Erasing all data"
+            disabled={busy}
+            onClick={() => void handleReset()}
           >
-            {resetting ? 'Erasing…' : 'Erase everything'}
-          </button>
-        </div>
+            Erase all data…
+          </Button>
+        </section>
       </div>
     </div>
   )
