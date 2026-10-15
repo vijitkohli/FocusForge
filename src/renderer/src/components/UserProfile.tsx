@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { USER_PROFILE_SECTIONS } from 'src/common/types'
+import { AISettings } from './AISettings'
 
 const REQUIRED_SECTIONS = USER_PROFILE_SECTIONS.map((s) => `## ${s}`)
 
@@ -170,6 +171,8 @@ export function UserProfile(): React.JSX.Element {
           )}
         </div>
       )}
+      <AISettings />
+
       {/* Danger Zone */}
       <div className="mt-auto pt-6 border-t border-border">
         <p className="text-xs font-semibold uppercase tracking-widest text-fg-3 mb-3">
