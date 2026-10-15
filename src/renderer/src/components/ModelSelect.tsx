@@ -1,48 +1,36 @@
-import React from 'react'
+import type { JSX } from 'react'
 import { MODEL_GROUPS } from 'src/common/models'
+import { Select, type SelectProps } from '../ui'
 
-interface ModelSelectProps {
+export interface ModelSelectProps extends Omit<SelectProps, 'value' | 'onChange' | 'children'> {
   value: string
   onChange: (value: string) => void
-  // Optional leading option, e.g. { value: '', label: 'Same as chat model' }
   emptyOption?: { value: string; label: string }
-  className?: string
 }
 
-const SELECT_CLASS =
-  'rounded-md border border-border bg-bg-3 px-3 py-2 text-sm text-fg-1 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40'
-
-/**
- * Model dropdown shared by the workspace and the settings card. A value that
- * isn't in MODEL_GROUPS (e.g. saved by an older build) is still shown, so the
- * select never silently displays the wrong model.
- */
+/** Retain saved/custom models even when they are no longer in the catalogue. */
 export function ModelSelect({
   value,
   onChange,
   emptyOption,
-  className
-}: ModelSelectProps): React.JSX.Element {
-  const known = MODEL_GROUPS.some((g) => g.options.some((o) => o.value === value))
+  ...props
+}: ModelSelectProps): JSX.Element {
+  const known = MODEL_GROUPS.some((group) => group.options.some((option) => option.value === value))
   const isEmpty = emptyOption && value === emptyOption.value
 
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={className ?? SELECT_CLASS}
-    >
+    <Select {...props} value={value} onChange={(event) => onChange(event.target.value)}>
       {emptyOption && <option value={emptyOption.value}>{emptyOption.label}</option>}
       {!known && !isEmpty && <option value={value}>{value}</option>}
       {MODEL_GROUPS.map((group) => (
         <optgroup key={group.label} label={group.label}>
-          {group.options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
+          {group.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </optgroup>
       ))}
-    </select>
+    </Select>
   )
 }
