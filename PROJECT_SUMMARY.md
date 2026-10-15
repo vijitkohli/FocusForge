@@ -2,7 +2,7 @@
 
 **What it is:** Electron desktop app ("Flow State OS") for anti-procrastination. Thesis: procrastination is an emotional/avoidance problem, not a discipline problem. An AI chat coach breaks any task (big or small) into steps small enough that starting feels easy. Gamification (progress bars, deadline urgency) reinforces momentum.
 
-Branch: `main-logic/v1`. Most of this work is currently **uncommitted** in the working tree — see `git status` before doing anything destructive.
+Branch: `main` (PR #1 `main-logic/v1` merged). Check `git status` before doing anything destructive.
 
 ---
 
@@ -11,7 +11,7 @@ Branch: `main-logic/v1`. Most of this work is currently **uncommitted** in the w
 - **Electron 39 + React 19 + TypeScript**, bundled with `electron-vite`
 - **State:** plain React hooks, no state library
 - **Styling:** **Tailwind CSS v4** (`@tailwindcss/vite`, no config file) with `@theme` design tokens + frosted-glass utilities in `src/renderer/src/assets/tailwind.css`. "Zen-browser" dark aesthetic: soft gradient-mesh backdrop, translucent `backdrop-blur` panels (`glass`/`glass-strong` utilities), large radii, pill controls, floating sidebar rail. `base.css` keeps only the Inter font stack + reset. (The old `main.css` was deleted.)
-- **AI engine:** separate Python process (`engine/`) invoked from the Electron main process via `python-shell`, using **LiteLLM** as the model-agnostic LLM client (supports Gemini, GPT-4o, Claude)
+- **AI engine:** separate Python process (`engine/`) invoked from the Electron main process via `python-shell`, using **LiteLLM** as the model-agnostic LLM client. Primary route is a local **CLIProxyAPI** server (`cliproxy/<model>`, see Models); direct Gemini/OpenAI/Anthropic keys and Ollama still work.
 - **Storage:** flat files on disk under `~/Documents/FlowState/{projectId}/` — no database
   - `project_data.json` — tasks + subtasks
   - `context.md` — per-project ledger (see below)
@@ -134,9 +134,10 @@ Inline add / edit / delete / toggle-complete on subtasks, fully offline (no LLM 
 
 ## Models
 
-- Default model lowered to `gemini/gemini-2.5-flash-lite` (cheapest current Gemini text model, ~5x cheaper than the previous `gemini-3-flash-preview` default) — set in both `engine/main.py` `DEFAULT_MODEL` and the UI dropdown's initial state.
-- Dropdown also offers GPT-4o and `claude-haiku-4-5` (cheapest Claude model) via LiteLLM. Each provider needs its own API key in `engine/.env`: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` (the latter was added as an empty placeholder — needs a real key pasted in before Claude actually works).
-- Switching providers is just changing the model string passed to `litellm.completion()` — no other code changes needed.
+- **CLIProxyAPI** (local OpenAI-compatible proxy over subscription logins, `http://localhost:8317/v1`) replaced the rate-limited API keys. `engine/main.py` `_complete()` rewrites `cliproxy/<name>` → LiteLLM `openai/<name>` with `CLIPROXY_API_BASE`/`CLIPROXY_API_KEY` from `engine/.env`.
+  - The proxy does **not** enforce `response_format: json_object` (Gemini 3 Flash fences JSON, Claude adds prose), so all JSON replies go through tolerant `_parse_json()`. Backends that reject `response_format` outright (gpt-oss) are retried without it.
+- **Two model roles**, persisted in `system/settings.json` (`src/main/settings.ts`, edited on Profile → AI): `chatModel` (intake questions, fast) and optional `planModel` (builds/adjusts checklists; engine payload `planModel`). Both default to `cliproxy/gemini-3.8-flash-high` (evals: best plans, 98% hard-pass, and the only model with 0/12 skipped must-ask questions; ~7 s to first token). `cliproxy/gemini-3-flash` is the fast chat alternative (~2.5 s, but skips ~1/3 of must-ask cases). Model list lives in `src/common/models.ts`.
+- Direct-key options (Gemini/OpenAI/Anthropic/Ollama) are still in the dropdown; each needs its key in `engine/.env`.
 
 ---
 
@@ -155,14 +156,26 @@ Inline add / edit / delete / toggle-complete on subtasks, fully offline (no LLM 
 
 
 
+## Features added in the CLIProxy cycle (Oct 2026)
+
+- **AI plan changes keep progress** (`src/common/merge.ts` `mergeChecklist`): the mutation prompt sees each step's status and is told to keep ids; the main process merges the AI's list onto the on-disk task by id (title-similarity-guarded for done items; numbered siblings like Q1/Q2 never match) then normalized title. Done steps the AI drops are restored unless the user explicitly asked to remove them (`requestsRemovingCompleted`), because streaks/heatmap/burndown derive from `completedAt`.
+- **Streamed chat now records facts:** `extract_turn_notes()` runs concurrently with the streamed question (no added latency) and returns ledger `notes` + profile `userNotes`.
+- **Eval-driven prompt rules:** count limits (Deep 10–15, Brief 4–6), time-box caps (Deep 5–20 min, Brief ≤60, split don't inflate), first step ≤5 min/zero-decision/today, prerequisites ≤15 min with `timeEstimate`, no-ask rules for same/next-day deadlines, chores, and look-up-while-doing details, one short question, clarify temperature 0.2. Engine exceptions now return `status: "error"` (shown as a banner, not a fake coach question).
+- **"Re-plan from today"** (`src/common/schedule.ts` `rescheduleOverdue`): banner in TaskDetail when steps slip past their day; moves overdue steps forward in order with a ~60 min/day budget, no LLM call.
+- **AI-personalised nudges** (`engine/nudge.py`): `getNudge()` still picks the item deterministically; the copy is rewritten with the user's profile + streak, falling back to the template on failure/timeout (25 s). Toggle on Profile → AI. `getNudge` now moves on to the next overdue step if the most overdue was already nudged today.
+- **Local-date fixes:** deadline redistribution, the workspace's default deadline, `getUpcomingTasks/Subtasks` deadline parsing, and ledger note timestamps all used UTC (`toISOString()` / `new Date('YYYY-MM-DD')`) and were off by a day in Sydney or west of UTC.
+- **Workspace split:** `ProjectWorkspace` → `ChatThread`, `ContextLedgerPanel`, `SavedTaskList`, `ModelSelect`.
+
+## Testing
+
+- **Unit tests:** `npm test` (vitest, `vitest.config.ts`, TZ pinned to Australia/Sydney). Covers `types.ts` helpers, `merge.ts`, `schedule.ts`, and `fs-manager.ts` derived reads (electron mocked to a temp dir; never touches `~/Documents/FlowState`).
+- **LLM evals:** `npm run eval` (`engine/evals/`, see its README) — 21 realistic cases run through the real engine, deterministic scorers + LLM judge, writes `engine/evals/REPORT.md`. `REPORT.baseline.md` is the pre-prompt-change baseline.
+
 ## What's still rough / not done
 
-- `ANTHROPIC_API_KEY` in `engine/.env` is currently empty — Claude option in the dropdown won't work until a real key is added.
-- **Streaming caveat:** the streamed clarifying turn returns plain prose, so it does **not** extract per-turn ledger `notes` (execution/mutation still do). Stated facts still reach the engine via the saved conversation + ledger.
-- **Mutation drops checkbox/board state:** an AI plan adjustment re-emits subtasks/prereqs fresh, resetting their completed/`status` state.
-- No automated tests anywhere in the repo.
-- A handful of `@ts-ignore`s remain in `Dashboard.tsx` around `window.api` calls that are already properly typed (cosmetic cleanup, not a bug).
-- `engine/chroma_db/` has a lot of untracked transient collection directories from testing the relevance-filtering pipeline — harmless but could be `.gitignore`d.
+- ~21 pre-existing ESLint errors (mostly `any` in `src/main/index.ts`, missing return types in TaskDetails/ProjectWorkspace, `react-hooks/purity` on `Date.now()` in the Burndown).
+- Claude/gpt-oss via the proxy have separate quotas that can run out (429 "Individual quota reached"); the eval harness tags these as `infra` and `--retry-errors` re-runs them.
+- Merge edge cases: a heavily reworded done step that keeps its id becomes a near-duplicate (history kept); restored done steps go to the top of the list.
 - `backdrop-blur` glass panels can be paint-heavy; not yet profiled on low-end hardware.
 
 ---
