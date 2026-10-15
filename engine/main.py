@@ -3,7 +3,7 @@
 #
 # Reads one JSON payload from stdin:
 #   { "messages": [{role, content}, ...], "deadline": "YYYY-MM-DD",
-#     "depth": "Brief"|"Deep", "model": "...", "contextLedger": "<context_<projectId>.md text>",
+#     "depth": "Brief"|"Deep", "model": "...", "planModel": "..." (optional), "contextLedger": "<context_<projectId>.md text>",
 #     "currentChecklist": {originalTask, subtasks} | null }
 #
 # Prints one JSON object to stdout:
@@ -11,11 +11,15 @@
 #     "data": null|DecompositionResult, "notes": [{section, note}, ...] }
 
 import sys, os, json
+from concurrent.futures import ThreadPoolExecutor
 from litellm import completion
+from litellm.exceptions import BadRequestError
 from dotenv import load_dotenv
 from datetime import datetime
 
-DEFAULT_MODEL = "gemini/gemini-2.5-flash-lite"
+load_dotenv()
+
+DEFAULT_MODEL = "cliproxy/gemini-3-flash"
 MAX_CLARIFYING_TURNS = 5
 
 # Local LLM (Ollama) support: any model prefixed "ollama/" is routed to a local
@@ -23,23 +27,60 @@ MAX_CLARIFYING_TURNS = 5
 # with OLLAMA_API_BASE in engine/.env if it isn't on the default port.
 OLLAMA_API_BASE = os.getenv("OLLAMA_API_BASE", "http://localhost:11434")
 
+# CLIProxyAPI support: any model prefixed "cliproxy/" is sent to a local
+# CLIProxyAPI server, which exposes an OpenAI-compatible endpoint backed by
+# subscription OAuth logins (no per-provider API keys or their rate limits).
+CLIPROXY_API_BASE = os.getenv("CLIPROXY_API_BASE", "http://localhost:8317/v1")
+CLIPROXY_API_KEY = os.getenv("CLIPROXY_API_KEY", "")
+
 
 def _complete(**kwargs):
     """
-    Thin wrapper around litellm.completion that injects Ollama-specific config
-    for local models so every call site stays provider-agnostic. For ollama/*
-    models it sets api_base and raises the default context window (num_ctx),
-    since our prompts (ledger + profile + transcript) can be long.
+    Thin wrapper around litellm.completion that injects provider-specific
+    config so every call site stays provider-agnostic. For ollama/* models it
+    sets api_base and raises the default context window (num_ctx), since our
+    prompts (ledger + profile + transcript) can be long. For cliproxy/* models
+    it rewrites to LiteLLM's generic OpenAI-compatible route.
     """
     model = kwargs.get("model", "")
     if isinstance(model, str) and model.startswith("ollama/"):
         kwargs["api_base"] = OLLAMA_API_BASE
         kwargs["num_ctx"] = 8192
-    return completion(**kwargs)
+    elif isinstance(model, str) and model.startswith("cliproxy/"):
+        kwargs["model"] = "openai/" + model[len("cliproxy/"):]
+        kwargs["api_base"] = CLIPROXY_API_BASE
+        kwargs["api_key"] = CLIPROXY_API_KEY
+    try:
+        return completion(**kwargs)
+    except BadRequestError:
+        # Some backends (e.g. gpt-oss via CLIProxyAPI) reject response_format
+        # outright. Every caller already asks for raw JSON in the prompt and
+        # parses tolerantly, so retry once without it.
+        if "response_format" not in kwargs:
+            raise
+        kwargs.pop("response_format")
+        return completion(**kwargs)
+
+
+def _parse_json(content):
+    """
+    Parses a model's JSON reply. Not every backend enforces response_format
+    (CLIProxyAPI passes it through loosely), so tolerate ```json fences and
+    prose around the object by falling back to the outermost {...} span.
+    """
+    text = (content or "").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end <= start:
+            raise
+        return json.loads(text[start:end + 1])
 
 # Maps a model prefix to the env var LiteLLM needs. ollama/* is local (no key).
 _PROVIDER_KEYS = [
     ("ollama/", None, None),
+    ("cliproxy/", "CLIPROXY_API_KEY", "CLIProxyAPI"),
     ("gemini", "GEMINI_API_KEY", "Google Gemini"),
     ("gpt", "OPENAI_API_KEY", "OpenAI"),
     ("openai/", "OPENAI_API_KEY", "OpenAI"),
@@ -69,6 +110,24 @@ def _missing_api_key(model_name):
     return None  # unknown provider — let LiteLLM decide
 
 
+# Shared by both clarification passes. Derived from engine/evals: models
+# over-asked on trivial/urgent tasks, asked for details only needed mid-task,
+# and bundled two questions into one.
+CLARIFY_RULES = (
+    "WHEN YOU MUST ASK (overrides everything below): the user hasn't said WHAT the outcome is - "
+    "e.g. an essay/report/project with no topic, question, or brief; 'study' or 'get my life together' "
+    "with no subject or goal; a large assignment (due in 3+ days) with no hint of its requirements or "
+    "what they've done so far. A generic plan here is useless, so ask.\n"
+    "WHEN NOT TO ASK (signal readiness instead):\n"
+    "  - The deadline is today or tomorrow: momentum matters more than detail.\n"
+    "  - It's a simple chore, errand, or message (clean a room, reply to an email, book an appointment).\n"
+    "  - The only missing details are ones the user would naturally look up WHILE doing the task "
+    "(exact amounts, account numbers, page counts) - make those a step instead of asking.\n"
+    "HOW TO ASK: exactly ONE short question - one sentence, one question mark, under 25 words, "
+    "never two questions joined by 'and'/'or'. Prefer what most changes the plan: success criteria, "
+    "scope, or what's making it hard to start.\n"
+)
+
 LEDGER_SECTIONS = [
     "Constraints & Specifications",
     "Document Excerpts",
@@ -81,8 +140,6 @@ USER_PROFILE_SECTIONS = [
     "Preferences",
     "Patterns & Friction"
 ]
-
-load_dotenv()
 
 
 def _user_turn_count(messages):
@@ -180,6 +237,7 @@ def run_clarification_phase(messages, deadline_str, days_remaining, context_ledg
         "personal friction points (what's actually making this feel hard to start).\n\n"
         "If you already have enough to build a genuinely useful, specific checklist, "
         "stop asking questions and signal readiness instead.\n\n"
+        f"{CLARIFY_RULES}\n"
         "Separately, check the conversation for any durable facts worth permanently recording:\n"
         "  1. Project facts: a constraint/spec the user stated, or work they say is already done → `notes`.\n"
         "  2. User facts: a lasting preference, working-style trait, or friction pattern the user reveals "
@@ -211,12 +269,13 @@ def run_clarification_phase(messages, deadline_str, days_remaining, context_ledg
             {"role": "user", "content": "Decide whether to ask a clarifying question or proceed, and extract any durable facts."}
         ],
         response_format={"type": "json_object"},
-        temperature=0.6,
+        # Low temperature: the ask-vs-ready decision flipped between samples at 0.6.
+        temperature=0.2,
         num_retries=1
     )
 
     content = response.choices[0].message.content
-    parsed = json.loads(content)
+    parsed = _parse_json(content)
     action = parsed.get("action", "ready")
     question = parsed.get("question", "Got it, let's build your plan.")
     notes = _sanitize_notes(parsed.get("notes", []))
@@ -264,12 +323,19 @@ def run_execution_phase(messages, deadline_str, days_remaining, depth, context_l
         "2. THE 10-MINUTE RULE: Break 'big' nebulous tasks into concrete, low-friction actions. "
         "   Avoid vague verbs like 'Study' or 'Work on'. Use specific verbs like 'Read Chapter 1', 'Write Introduction', 'Email X'.\n"
         "3. LOGICAL FLOW: Start with setup/prep tasks (momentum builders), then moving to core work, then review/polishing.\n"
-        "4. QUANTITY: Provide at least 10+ subtasks if Depth is 'Deep' or 5 subtasks if Depth is 'Brief'. \n"
+        "4. QUANTITY: 'Deep' = 10-15 subtasks, 'Brief' = 4-6 subtasks. These are hard limits - "
+        "   merge related steps rather than exceeding them.\n"
         "5. SCHEDULING: Distribute tasks logically across the available days. Do not dump everything on the deadline.\n"
-        "6. STRICT TIME-BOXING: Every subtask must have a realistic timeEstimate in minutes; "
-        "   keep individual steps small enough to start without dread.\n"
+        "6. STRICT TIME-BOXING: Every subtask must have a realistic integer timeEstimate in minutes. "
+        "   'Deep': 5-20 minutes each. 'Brief': at most 60 minutes each. If a step would take longer, "
+        "   SPLIT it - never just raise the estimate.\n"
         "7. NO REDUNDANT WORK: If the context ledger says something is already done, do not "
-        "   include it (or an equivalent step) in the checklist again.\n\n"
+        "   include it (or an equivalent step OR prerequisite) in the checklist again.\n"
+        "8. THE FIRST STEP IS THE MOST IMPORTANT: subtasks[0] must take 5 minutes or less, require "
+        "   zero decisions (e.g. 'Open the assignment spec and read the first page'), and be "
+        f"   scheduled for CURRENT DATE ({today_str}).\n"
+        "9. PREREQUISITES ARE SMALL: each prerequisite is at most 15 minutes. Substantial work "
+        "   (finding sources, reading chapters, building things) belongs in `subtasks`, not here.\n\n"
 
         "--- JSON FORMAT ---\n"
         "Return ONLY a raw JSON object with this exact structure:\n"
@@ -278,7 +344,7 @@ def run_execution_phase(messages, deadline_str, days_remaining, depth, context_l
         '(e.g. \'Finish Quiz 4\', \'Write the introduction\'); NEVER an instruction to yourself '
         'such as \'Build the final checklist now.\' or any similar phrase",\n'
         '  "prerequisites": [\n'
-        '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup" }\n'
+        '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup", "timeEstimate": integer_minutes }\n'
         '  ],\n'
         '  "subtasks": [\n'
         '    {\n'
@@ -304,7 +370,7 @@ def run_execution_phase(messages, deadline_str, days_remaining, depth, context_l
     )
 
     content = response.choices[0].message.content
-    parsed = json.loads(content)
+    parsed = _parse_json(content)
     # Guard: if the model echoed the engine's own instruction string, blank it
     # so the renderer falls back to the user's actual first message.
     _BAD_TITLES = {"build the final checklist now", "apply the adjustment now"}
@@ -314,17 +380,46 @@ def run_execution_phase(messages, deadline_str, days_remaining, depth, context_l
     return parsed
 
 
+def _checklist_for_prompt(checklist):
+    """
+    Compact view of the current checklist for the mutation prompt: keeps ids
+    and a per-item "status" (done/doing/todo) so the model knows what's
+    finished, and drops noise like completedAt timestamps.
+    """
+    def subtask_view(s):
+        status = s.get("status") or ("done" if s.get("isCompleted") else "todo")
+        view = {"id": s.get("id"), "title": s.get("title"), "status": status}
+        for key in ("difficulty", "timeEstimate", "scheduledDate"):
+            if s.get(key) is not None:
+                view[key] = s[key]
+        return view
+
+    def prereq_view(p):
+        view = {"id": p.get("id"), "title": p.get("title"), "status": "done" if p.get("isCompleted") else "todo"}
+        if p.get("kind"):
+            view["kind"] = p["kind"]
+        return view
+
+    checklist = checklist or {}
+    return {
+        "originalTask": checklist.get("originalTask", ""),
+        "prerequisites": [prereq_view(p) for p in checklist.get("prerequisites") or [] if isinstance(p, dict)],
+        "subtasks": [subtask_view(s) for s in checklist.get("subtasks") or [] if isinstance(s, dict)]
+    }
+
+
 def run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name):
     """
     Reshapes an existing checklist on request (e.g. "make this shorter",
     "expand step 3"). Returns a complete replacement subtask list rather
-    than a patch - merge semantics on an AI-restructured plan are far more
-    error-prone than just re-rendering a fresh list.
+    than a patch, but the main process merges it back onto the user's progress
+    by id (falling back to title), so the model is told which steps are done
+    and must keep ids stable for anything it keeps.
     """
     latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
     profile_block = _user_profile_block(user_profile)
     ledger_block = _ledger_block(context_ledger)
-    checklist_json = json.dumps(current_checklist)
+    checklist_json = json.dumps(_checklist_for_prompt(current_checklist))
 
     system_instruction = (
         "You are an expert Productivity Coach. The user already has a checklist for "
@@ -340,14 +435,21 @@ def run_mutation_phase(messages, current_checklist, context_ledger, user_profile
         "3. Do not reintroduce anything the context ledger says is already done.\n"
         "4. PRESERVE the `prerequisites` (learn/acquire/setup) from the current checklist unless the "
         "   request is specifically about them - do not silently drop the learn phase.\n"
-        "5. Briefly summarize what you changed in `message` (e.g. 'Condensed from 11 to 6 steps').\n\n"
+        "5. Briefly summarize what you changed in `message` (e.g. 'Condensed from 11 to 6 steps').\n"
+        "6. IDS ARE HOW THE USER'S PROGRESS IS TRACKED. For every step or prerequisite you keep or only "
+        "   lightly edit, reuse its EXACT existing `id`. Give genuinely new steps NEW ids that do not appear "
+        "   anywhere in the current checklist (e.g. 'new-1', 'new-2') - never renumber or recycle ids.\n"
+        "7. Items with \"status\": \"done\" are finished work. Keep every one of them in your output with its "
+        "   id and title unchanged, and do not merge, split or reword them - only adjust the remaining steps. "
+        "   Drop a done item only if the user explicitly asks to remove completed work. Do not count done "
+        "   steps against a 'make it shorter' request.\n\n"
         "--- JSON FORMAT ---\n"
         "Return ONLY a raw JSON object with this exact structure:\n"
         "{\n"
         '  "message": "string - short summary of what changed",\n'
         '  "originalTask": "string",\n'
         '  "prerequisites": [\n'
-        '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup" }\n'
+        '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup", "timeEstimate": integer_minutes }\n'
         '  ],\n'
         '  "subtasks": [\n'
         '    {\n'
@@ -373,7 +475,7 @@ def run_mutation_phase(messages, current_checklist, context_ledger, user_profile
     )
 
     content = response.choices[0].message.content
-    parsed = json.loads(content)
+    parsed = _parse_json(content)
     summary = parsed.pop("message", "Plan updated.")
     return summary, parsed
 
@@ -396,6 +498,53 @@ def _user_wants_no_followup(messages):
     return False
 
 
+def extract_turn_notes(messages, context_ledger, user_profile, model_name):
+    """
+    Pulls durable facts out of the user's latest message for the streamed chat
+    path, whose reply is plain prose and so can't carry `notes`. Runs
+    concurrently with the streamed question (see handle_chat_turn_streaming),
+    so it adds no latency. Never raises: a failed extraction just means no
+    notes this turn. Returns (notes, user_notes).
+    """
+    latest = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    if not latest.strip():
+        return [], []
+
+    system_instruction = (
+        "You maintain a productivity coach's memory. Read the user's LATEST message and record "
+        "only durable facts it explicitly states. Do not invent or infer.\n"
+        "  1. Project facts: a constraint/spec (word count, rubric, tech, due details) or work the user says "
+        "     is already done → `notes` (section 'Constraints & Specifications' or 'Milestones & Completed Work').\n"
+        "  2. User facts: a lasting preference, working-style trait, or friction pattern about THEMSELVES "
+        "     (not this task) → `userNotes` (section 'About Me', 'Preferences' or 'Patterns & Friction').\n"
+        "Skip anything already recorded in the ledger/profile below. Most messages contain nothing new - "
+        "empty lists are the normal answer.\n"
+        f"{_user_profile_block(user_profile)}"
+        f"{_ledger_block(context_ledger)}\n"
+        "--- EARLIER CONVERSATION (context only) ---\n"
+        f"{_conversation_transcript(messages[:-1])}\n\n"
+        f"--- LATEST USER MESSAGE ---\n{latest}\n\n"
+        "Return ONLY a raw JSON object: "
+        '{"notes": [{"section": "...", "note": "..."}], "userNotes": [{"section": "...", "note": "..."}]}'
+    )
+    try:
+        response = _complete(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": "Extract the durable facts."}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+            num_retries=0
+        )
+        parsed = _parse_json(response.choices[0].message.content)
+        return _sanitize_notes(parsed.get("notes", [])), _sanitize_user_notes(parsed.get("userNotes", []))
+    except Exception as e:
+        print(f"note extraction failed: {e}", file=sys.stderr)
+        return [], []
+
+
 def run_clarification_streaming(messages, deadline_str, days_remaining, context_ledger, user_profile, model_name, emit):
     """
     Streaming variant of the clarification pass: streams the next question to
@@ -404,9 +553,8 @@ def run_clarification_streaming(messages, deadline_str, days_remaining, context_
     build the checklist. Tokens are buffered until the sentinel is ruled out, so
     a readiness signal never flashes on screen. Returns (ready, question).
 
-    Note: unlike the structured clarification pass, this path does not extract
-    per-turn ledger `notes` or `userNotes` - the streamed reply is plain prose.
-    Stated facts still reach the engine via the saved conversation + context ledger.
+    The streamed reply is plain prose, so per-turn ledger `notes`/`userNotes`
+    are extracted separately by extract_turn_notes (run concurrently).
     """
     transcript = _conversation_transcript(messages)
     profile_block = _user_profile_block(user_profile)
@@ -418,6 +566,7 @@ def run_clarification_streaming(messages, deadline_str, days_remaining, context_
         "Find the single most important missing piece of information (grading criteria, "
         "required tools, hidden dependencies, scope, or personal friction) and ask ONE "
         "specific, open-ended question in plain prose.\n\n"
+        f"{CLARIFY_RULES}\n"
         f"If you already have enough to build a genuinely useful, specific checklist, reply "
         f"with EXACTLY this and nothing else: {CLARIFY_SENTINEL}\n\n"
         "Reply with plain text only - no JSON, no preamble.\n\n"
@@ -436,7 +585,8 @@ def run_clarification_streaming(messages, deadline_str, days_remaining, context_
             {"role": "user", "content": "Ask your next question, or reply with the readiness sentinel."}
         ],
         stream=True,
-        temperature=0.6,
+        # Low temperature: the ask-vs-ready decision flipped between samples at 0.6.
+        temperature=0.2,
         num_retries=1
     )
 
@@ -479,13 +629,16 @@ def handle_chat_turn_streaming(payload, emit):
     deadline_str = payload.get("deadline", datetime.now().strftime("%Y-%m-%d"))
     depth = payload.get("depth", "Brief")
     model_name = payload.get("model") or DEFAULT_MODEL
+    # Optional stronger model for building/adjusting the checklist itself;
+    # the intake questions keep using the (faster) chat model.
+    plan_model = payload.get("planModel") or model_name
     context_ledger = payload.get("contextLedger")
     user_profile = payload.get("userProfile")
     current_checklist = payload.get("currentChecklist")
 
     _today_str, resolved_deadline_str, days_remaining = _resolve_deadline(deadline_str)
 
-    key_error = _missing_api_key(model_name)
+    key_error = _missing_api_key(model_name) or _missing_api_key(plan_model)
     if key_error:
         emit({"type": "result", "status": "error", "message": key_error, "data": None, "notes": [], "userNotes": []})
         return
@@ -497,31 +650,37 @@ def handle_chat_turn_streaming(payload, emit):
             emit({"type": "result", **result})
             return
 
-        turn = _user_turn_count(messages)
-        if turn < MAX_CLARIFYING_TURNS and not _user_wants_no_followup(messages):
-            ready, question = run_clarification_streaming(
-                messages, resolved_deadline_str, days_remaining, context_ledger, user_profile, model_name, emit
-            )
-            if not ready:
-                emit({"type": "result", "status": "clarifying", "message": question, "data": None, "notes": [], "userNotes": []})
-                return
-            # ready -> fall through to execution (no tokens for the checklist)
+        # Fact extraction runs alongside the streamed question / checklist build.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            notes_future = pool.submit(extract_turn_notes, messages, context_ledger, user_profile, model_name)
 
-        result = run_execution_phase(
-            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, model_name
-        )
+            turn = _user_turn_count(messages)
+            if turn < MAX_CLARIFYING_TURNS and not _user_wants_no_followup(messages):
+                ready, question = run_clarification_streaming(
+                    messages, resolved_deadline_str, days_remaining, context_ledger, user_profile, model_name, emit
+                )
+                if not ready:
+                    notes, user_notes = notes_future.result()
+                    emit({"type": "result", "status": "clarifying", "message": question, "data": None, "notes": notes, "userNotes": user_notes})
+                    return
+                # ready -> fall through to execution (no tokens for the checklist)
+
+            result = run_execution_phase(
+                messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, plan_model
+            )
+            notes, user_notes = notes_future.result()
         emit({
             "type": "result",
             "status": "complete",
             "message": "Here's your plan. Let's build momentum.",
             "data": result,
-            "notes": [],
-            "userNotes": []
+            "notes": notes,
+            "userNotes": user_notes
         })
     except Exception as e:
         emit({
             "type": "result",
-            "status": "clarifying",
+            "status": "error",
             "message": f"Something went wrong on my end ({str(e)}). Could you try that again?",
             "data": None,
             "notes": [],
@@ -534,13 +693,16 @@ def handle_chat_turn(payload):
     deadline_str = payload.get("deadline", datetime.now().strftime("%Y-%m-%d"))
     depth = payload.get("depth", "Brief")
     model_name = payload.get("model") or DEFAULT_MODEL
+    # Optional stronger model for building/adjusting the checklist itself;
+    # the intake questions keep using the (faster) chat model.
+    plan_model = payload.get("planModel") or model_name
     context_ledger = payload.get("contextLedger")
     user_profile = payload.get("userProfile")
     current_checklist = payload.get("currentChecklist")
 
     _today_str, resolved_deadline_str, days_remaining = _resolve_deadline(deadline_str)
 
-    key_error = _missing_api_key(model_name)
+    key_error = _missing_api_key(model_name) or _missing_api_key(plan_model)
     if key_error:
         return {"status": "error", "message": key_error, "data": None, "notes": [], "userNotes": []}
 
@@ -548,7 +710,7 @@ def handle_chat_turn(payload):
         # Mutation mode: a checklist already exists and the user is asking to adjust it
         if current_checklist:
             latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-            summary, new_checklist = run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name)
+            summary, new_checklist = run_mutation_phase(messages, current_checklist, context_ledger, user_profile, plan_model)
             return {
                 "status": "updated",
                 "message": summary,
@@ -575,7 +737,7 @@ def handle_chat_turn(payload):
             user_notes = []
 
         result = run_execution_phase(
-            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, model_name
+            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, plan_model
         )
         return {
             "status": "complete",
@@ -587,7 +749,7 @@ def handle_chat_turn(payload):
 
     except Exception as e:
         return {
-            "status": "clarifying",
+            "status": "error",
             "message": f"Something went wrong on my end ({str(e)}). Could you try that again?",
             "data": None,
             "notes": [],
