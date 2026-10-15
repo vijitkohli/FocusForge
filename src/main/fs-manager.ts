@@ -11,6 +11,16 @@ function localDateKey(d: Date): string {
     return `${y}-${m}-${day}`;
 }
 
+/**
+ * Parses a deadline/scheduledDate as LOCAL midnight. `new Date('YYYY-MM-DD')`
+ * is UTC midnight, which lands on the previous local day west of UTC.
+ */
+function parseLocalDate(value: string): Date {
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
 // Define file hierarchy
 const ROOT_DIR = path.join(app.getPath('documents'), 'FlowState');
 const SYSTEM_DIR = path.join(ROOT_DIR, 'system');
@@ -307,7 +317,7 @@ export class FileSystemManager{
 
         for (const { section, note } of notes) {
             const heading = `## ${section}`;
-            const timestamp = new Date().toISOString().split('T')[0];
+            const timestamp = localDateKey(new Date());
             const line = `- [${timestamp}] ${note}`;
 
             const headingIndex = contents.indexOf(heading);
@@ -472,9 +482,8 @@ export class FileSystemManager{
             const tasks = data?.tasks ?? [];
 
             for (const task of tasks) {
-                const deadline = new Date(task.deadline);
+                const deadline = parseLocalDate(task.deadline);
                 if (isNaN(deadline.getTime())) continue;
-                deadline.setHours(0, 0, 0, 0);
 
                 const daysRemaining = Math.round((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
                 const subtasks = task.subtasks ?? [];
@@ -523,9 +532,8 @@ export class FileSystemManager{
                     if (subtask.isCompleted) continue;
 
                     const dateStr = subtask.scheduledDate ?? task.deadline;
-                    const subDate = new Date(dateStr);
+                    const subDate = parseLocalDate(dateStr);
                     if (isNaN(subDate.getTime())) continue;
-                    subDate.setHours(0, 0, 0, 0);
 
                     const daysRemaining = Math.round((subDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -618,7 +626,7 @@ export class FileSystemManager{
      * (08:00-22:00 only) and an at-most-once-per-item-per-day guard persisted in
      * system/nudges.json. Returns null when there's nothing kind to say.
      */
-    async getNudge(): Promise<{ title: string; body: string } | null> {
+    async getNudge(): Promise<{ title: string; body: string; subject: string; reason: 'overdue' | 'idle' } | null> {
         const hour = new Date().getHours();
         if (hour < 8 || hour >= 22) return null; // quiet hours
 
@@ -635,11 +643,12 @@ export class FileSystemManager{
         }
         const alreadyNudged = (key: string): boolean => log[key] === todayKey;
 
-        // 1. Most overdue incomplete step (upcoming is sorted soonest-first).
-        let pick: { key: string; name: string } | null = null;
-        const mostUrgent = upcoming[0];
-        if (mostUrgent.daysRemaining < 0 && !alreadyNudged(`sub:${mostUrgent.subtaskId}`)) {
-            pick = { key: `sub:${mostUrgent.subtaskId}`, name: mostUrgent.subtaskTitle };
+        // 1. Most overdue incomplete step not yet nudged today (upcoming is
+        //    sorted soonest-first, so the first match is the most overdue).
+        let pick: { key: string; name: string; reason: 'overdue' | 'idle' } | null = null;
+        const overdue = upcoming.find((s) => s.daysRemaining < 0 && !alreadyNudged(`sub:${s.subtaskId}`));
+        if (overdue) {
+            pick = { key: `sub:${overdue.subtaskId}`, name: overdue.subtaskTitle, reason: 'overdue' };
         }
 
         // 2. Otherwise, a project with open work that's gone quiet.
@@ -653,7 +662,7 @@ export class FileSystemManager{
                 .filter((p) => !alreadyNudged(`proj:${p.id}`))
                 .sort((a, b) => new Date(a.lastActive).getTime() - new Date(b.lastActive).getTime());
             if (stale.length > 0) {
-                pick = { key: `proj:${stale[0].id}`, name: stale[0].name };
+                pick = { key: `proj:${stale[0].id}`, name: stale[0].name, reason: 'idle' };
             }
         }
 
@@ -668,7 +677,7 @@ export class FileSystemManager{
         }
 
         const template = NUDGE_TEMPLATES[Math.floor(Math.random() * NUDGE_TEMPLATES.length)];
-        return { title: 'Flow State', body: template.replace('{name}', pick.name) };
+        return { title: 'Flow State', body: template.replace('{name}', pick.name), subject: pick.name, reason: pick.reason };
     }
 
     /**
