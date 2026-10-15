@@ -1,85 +1,89 @@
 @import 'tailwindcss';
 
-@theme {
-  /* Dark gray canvas + layers */
+@theme static {
+  --color-bg-0: #1a1a1a;
   --color-bg-1: #1f1f1f;
   --color-bg-2: #272727;
   --color-bg-3: #343434;
-
-  /* Frosted glass surfaces (translucent — pair with backdrop-blur).
-     Warm cream-alpha over the dark base. */
-  --color-surface: rgba(244, 239, 230, 0.045);
-  --color-surface-strong: rgba(244, 239, 230, 0.07);
-
-  /* Foreground / text — cream/beige */
+  --color-bg-4: #3f3f3f;
   --color-fg-1: #f4efe6;
-  --color-fg-2: rgba(244, 239, 230, 0.62);
-  --color-fg-3: rgba(244, 239, 230, 0.4);
-
-  /* Accent — brand orange */
+  --color-fg-2: #b4aea4;
+  --color-fg-3: #99938a;
+  --color-on-accent: #1f1f1f;
   --color-accent: #ff6c3b;
   --color-accent-hover: #ff835a;
-  --color-accent-soft: rgba(255, 108, 59, 0.16);
-
-  /* Semantic urgency / difficulty */
+  --color-accent-press: #e85a2b;
+  --color-accent-soft: rgba(255, 108, 59, 0.14);
+  --color-accent-line: rgba(255, 108, 59, 0.45);
   --color-easy: #4ade80;
   --color-medium: #fbbf24;
   --color-hard: #f87171;
-
-  /* Borders — soft cream */
-  --color-border: rgba(244, 239, 230, 0.12);
-  --color-border-strong: rgba(244, 239, 230, 0.22);
-
-  /* Tight, mostly-square radii */
-  --radius-sm: 0.1875rem;
-  --radius-md: 0.25rem;
-  --radius-lg: 0.375rem;
-  --radius-xl: 0.5rem;
-  --radius-2xl: 0.5rem;
+  --color-cover-1: #ff6c3b;
+  --color-cover-2: #fbbf24;
+  --color-cover-3: #d8c3a5;
+  --color-cover-4: #c4532d;
+  --color-cover-5: #ffb08f;
+  --color-line: #2f2f2f;
+  --color-line-strong: #454545;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --font-sans:
+    'Schibsted Grotesk Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+:root {
+  color-scheme: dark;
+  caret-color: var(--color-accent);
+}
 html,
 body,
 #root {
   height: 100%;
+  width: 100%;
 }
-
 body {
-  margin: 0;
-  color: var(--color-fg-1);
   overflow: hidden;
-  /* Subtle gradient mesh — calm, low-opacity, the surface panels sit on */
-  background-color: var(--color-bg-1);
-  background-image:
-    radial-gradient(circle at 15% 12%, rgba(255, 108, 59, 0.09), transparent 45%),
-    radial-gradient(circle at 88% 90%, rgba(255, 108, 59, 0.05), transparent 48%);
-  background-attachment: fixed;
+  background: var(--color-bg-1);
+  color: var(--color-fg-1);
 }
-
 #root {
   display: flex;
   flex-direction: column;
-  width: 100%;
+}
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-fg-1);
+}
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+/* DateInput hides Chromium's picker indicator (its focus ring can't be themed)
+   and renders its own calendar IconButton instead. */
+.date-input::-webkit-calendar-picker-indicator {
+  display: none;
 }
 
-/* Frosted-glass panel — one definition for every card/toolbar/bubble surface */
-@utility glass {
-  background-color: var(--color-surface);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+button {
+  cursor: pointer;
 }
-
-@utility glass-strong {
-  background-color: var(--color-surface-strong);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+button:disabled {
+  cursor: default;
 }
-
-/* Refined scrollbar to match calm theme */
+button {
+  transition:
+    background-color 120ms,
+    color 120ms,
+    transform 80ms;
+}
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+svg.lucide {
+  stroke-width: 1.75;
+  flex-shrink: 0;
+}
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -88,15 +92,165 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: #3f3f3f;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-accent);
+  background: #4a4a4a;
 }
-
-/* Date input calendar icon visible on dark bg */
-input[type='date']::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
-  cursor: pointer;
+.page {
+  width: 100%;
+  max-width: 1424px;
+  margin: 0 auto;
+  padding: 32px;
+}
+.page-title {
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.section-title {
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.now-title {
+  font-size: clamp(36px, 4.2vw, 56px);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.row-title {
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 550;
+}
+.meta {
+  font-size: 12.5px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.prose-content {
+  max-width: 72ch;
+  overflow-wrap: anywhere;
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+.now-layout {
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  gap: 32px;
+}
+.now-panel {
+  padding: 32px;
+}
+.now-panel .now-title {
+  font-size: clamp(36px, 3.4vw, 56px);
+}
+.scrubber-overflow {
+  animation: overflow-marker 5s linear infinite;
+}
+@keyframes overflow-marker {
+  from {
+    left: 0;
+  }
+  to {
+    left: calc(100% - 2px);
+  }
+}
+@keyframes completed-title {
+  to {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+}
+::view-transition-group(*) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+::view-transition-old(now-title),
+::view-transition-new(now-title) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+::view-transition-old(completed-title) {
+  animation: completed-title 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (max-width: 1099px) {
+  .now-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.8fr);
+    gap: 24px;
+  }
+  .now-panel {
+    padding: 24px;
+  }
+  .now-panel .now-title {
+    font-size: 36px;
+  }
+}
+@media (max-width: 760px) {
+  .page {
+    padding: 24px 20px;
+  }
+  .now-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Responsive feedback only (plan §8): menu fade, drawer slide, streak tick.
+   The reduced-motion block below zeroes all three. */
+.motion-menu {
+  animation: menu-in 120ms ease-out both;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.motion-scrim {
+  animation: scrim-in 200ms ease-out both;
+}
+@keyframes scrim-in {
+  from {
+    background-color: transparent;
+  }
+}
+.motion-drawer {
+  animation: drawer-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(32px);
+    opacity: 0;
+  }
+}
+.streak-tick {
+  display: inline-block;
+  animation: streak-tick 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes streak-tick {
+  from {
+    transform: translateY(60%);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0s !important;
+  }
 }
