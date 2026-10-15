@@ -1,3 +1,4 @@
+import '@fontsource-variable/schibsted-grotesk'
 import './assets/base.css'
 import './assets/tailwind.css'
 
