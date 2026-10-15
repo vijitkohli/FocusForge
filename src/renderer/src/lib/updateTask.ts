@@ -1,4 +1,4 @@
-import { LedgerNote, ProjectData, ProjectTask } from 'src/common/types'
+import type { LedgerNote, ProjectTask } from 'src/common/types'
 
 /**
  * Single load-modify-save path for mutating one task within a project, with an
@@ -8,8 +8,8 @@ import { LedgerNote, ProjectData, ProjectTask } from 'src/common/types'
  * them all through here removes that duplication and gives a single place to
  * add concurrency safety later.
  *
- * `updater` receives the matching task and returns its replacement. If the task
- * isn't found the file is saved unchanged (the note still records the intent).
+ * `updater` receives the matching task and returns its replacement. Missing
+ * projects/tasks and failed saves reject, without recording a successful change.
  */
 export async function updateTask(
   projectId: string,
@@ -17,7 +17,14 @@ export async function updateTask(
   updater: (task: ProjectTask) => ProjectTask,
   note: LedgerNote
 ): Promise<void> {
-  const file: ProjectData = (await window.api.loadProjectData(projectId)) || { tasks: [] }
-  file.tasks = (file.tasks ?? []).map((t) => (t.id === taskId ? updater(t) : t))
-  await window.api.saveProjectData(projectId, file, [note])
+  const file = await window.api.loadProjectData(projectId)
+  if (!file) throw new Error('The project could not be loaded. Return to the project to reload it.')
+  if (!(file.tasks ?? []).some((task) => task.id === taskId)) {
+    throw new Error('This task no longer exists. Return to the project to reload it.')
+  }
+  file.tasks = file.tasks.map((task) => (task.id === taskId ? updater(task) : task))
+  const result = await window.api.saveProjectData(projectId, file, [note])
+  if (!result.success) {
+    throw new Error(result.error || 'The task change was not saved to disk. Try again.')
+  }
 }
