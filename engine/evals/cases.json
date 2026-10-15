@@ -1,5 +1,5 @@
 {
-  "_comment": "Eval cases for engine/main.py. Deadlines are relative (deadline_offset_days from the run date) so the suite stays reproducible on any day. expect_clarify: 'ask' = a good coach should ask first, 'ready' = enough context to plan immediately, 'either' = defensible both ways. done_items = work the ledger marks complete (used by the no-redundant-work scorer).",
+  "_comment": "Eval cases for engine/main.py. Deadlines are relative (deadline_offset_days from the run date) so the suite stays reproducible on any day. expect_clarify: 'ask' = a good coach should ask first, 'ready' = enough context to plan immediately, 'either' = defensible both ways. done_items = work the ledger marks complete (used by the no-redundant-work scorer). estimate_ratio = measured actual/estimate pace, sent as estimateRatio.",
   "cases": [
     {
       "id": "cold-war-essay-vague",
@@ -210,6 +210,30 @@
       "messages": [{"role": "user", "content": "Finish my COMP3121 problem set tonight (due 11:59pm): 4 questions on dynamic programming, each needs a recurrence, proof of correctness and runtime analysis. I've finished Q1."}],
       "context_ledger": "## Constraints & Specifications\n- [2026-10-01] Typed PDF submission. Each answer: subproblem definition, recurrence, base cases, order of computation, runtime.\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-10-14] Q1 fully written up (recurrence, proof, runtime).\n\n## Plan Adjustments\n",
       "done_items": ["Solve Q1", "Write up Q1", "Write the recurrence for Q1"]
+    },
+    {
+      "id": "comp2521-graph-assignment-slow-pace",
+      "description": "Same as comp2521-graph-assignment, but Focus data says this student takes 1.6x the estimates: steps must still respect the size limits (split, don't inflate).",
+      "tags": ["coding", "comp", "pace"],
+      "depth": "Deep",
+      "deadline_offset_days": 14,
+      "expect_clarify": "ask",
+      "messages": [
+        {"role": "user", "content": "COMP2521 assignment 2 - implement a graph-based route planner in C. Due in 2 weeks and I haven't started."}
+      ],
+      "estimate_ratio": 1.6
+    },
+    {
+      "id": "chem-lab-report-tomorrow-slow-pace",
+      "description": "Same as chem-lab-report-tomorrow, but Focus data says this student takes 1.6x the estimates: steps must still respect the size limits (split, don't inflate).",
+      "tags": ["lab-report", "short-deadline", "pace"],
+      "depth": "Brief",
+      "deadline_offset_days": 1,
+      "expect_clarify": "either",
+      "messages": [
+        {"role": "user", "content": "CHEM1011 titration lab report is due tomorrow at 5pm. I have my raw data in my lab book but haven't written anything."}
+      ],
+      "estimate_ratio": 1.6
     }
   ]
 }
