@@ -1,0 +1,215 @@
+{
+  "_comment": "Eval cases for engine/main.py. Deadlines are relative (deadline_offset_days from the run date) so the suite stays reproducible on any day. expect_clarify: 'ask' = a good coach should ask first, 'ready' = enough context to plan immediately, 'either' = defensible both ways. done_items = work the ledger marks complete (used by the no-redundant-work scorer).",
+  "cases": [
+    {
+      "id": "cold-war-essay-vague",
+      "description": "Classic vague essay ask (the known gemini-3-flash skip case).",
+      "tags": ["essay", "vague"],
+      "depth": "Brief",
+      "deadline_offset_days": 10,
+      "expect_clarify": "ask",
+      "messages": [{"role": "user", "content": "2000 word essay on the cold war"}]
+    },
+    {
+      "id": "cold-war-essay-answered",
+      "description": "Same essay, but the coach already asked and the user answered in detail. Should stop asking.",
+      "tags": ["essay", "multi-turn", "friction"],
+      "depth": "Brief",
+      "deadline_offset_days": 10,
+      "expect_clarify": "ready",
+      "messages": [
+        {"role": "user", "content": "2000 word essay on the cold war for HIST1010"},
+        {"role": "assistant", "content": "What's the exact essay question, and what are the marking criteria or citation requirements?"},
+        {"role": "user", "content": "The question is 'Was the Cold War inevitable?'. Chicago footnotes, at least 8 scholarly sources, marked on argument (40%), use of evidence (40%), writing (20%). I have zero sources so far and I always freeze writing the intro."}
+      ]
+    },
+    {
+      "id": "comp2521-graph-assignment",
+      "description": "Big data structures coding assignment, two weeks out, no spec details given.",
+      "tags": ["coding", "comp"],
+      "depth": "Deep",
+      "deadline_offset_days": 14,
+      "expect_clarify": "ask",
+      "messages": [{"role": "user", "content": "COMP2521 assignment 2 - implement a graph-based route planner in C. Due in 2 weeks and I haven't started."}]
+    },
+    {
+      "id": "comp1531-group-iteration",
+      "description": "Group project iteration with ledger showing setup already done.",
+      "tags": ["coding", "group", "ledger"],
+      "depth": "Deep",
+      "deadline_offset_days": 9,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "COMP1531 iteration 2 - I'm responsible for the channels/* routes in our Flask backend (channels_create, channels_list, channel_join, channel_invite). Need pytest tests for each and it has to pass the GitLab pipeline."}],
+      "context_ledger": "## Constraints & Specifications\n- [2026-10-01] Python 3.10, Flask, pytest. Coverage must be >= 90% for the pipeline to pass.\n- [2026-10-01] Each route needs HTTP tests in tests/http/.\n- [2026-10-02] Team of 4: I own channels/*, Priya owns auth/*.\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-10-05] Set up the GitLab repo, cloned it, and got the CI pipeline green on the skeleton.\n- [2026-10-08] Implemented channels_create and wrote its unit tests (all passing).\n\n## Plan Adjustments\n",
+      "done_items": ["Set up the GitLab repo and CI pipeline", "Implement channels_create", "Write unit tests for channels_create"]
+    },
+    {
+      "id": "chem-lab-report-tomorrow",
+      "description": "Lab report due tomorrow - very short deadline.",
+      "tags": ["lab-report", "short-deadline"],
+      "depth": "Brief",
+      "deadline_offset_days": 1,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "CHEM1011 titration lab report is due tomorrow at 5pm. I have my raw data in my lab book but haven't written anything."}]
+    },
+    {
+      "id": "math1231-exam-revision",
+      "description": "Exam revision with a long-ish runway and a weak topic.",
+      "tags": ["exam", "long-deadline"],
+      "depth": "Deep",
+      "deadline_offset_days": 21,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "MATH1231 final exam in 3 weeks. I've basically not touched the linear algebra half of the course (eigenvalues, vector spaces, linear maps). Calculus half I'm okay at."}]
+    },
+    {
+      "id": "comp3311-sql-tomorrow",
+      "description": "Deep breakdown of a database assignment due tomorrow.",
+      "tags": ["coding", "comp", "short-deadline"],
+      "depth": "Deep",
+      "deadline_offset_days": 1,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "COMP3311 assignment 1 is due tomorrow night: 10 questions writing SQL views and PL/pgSQL functions over a provided PostgreSQL database (it's a music database). I've done Q1-Q3."}],
+      "context_ledger": "## Constraints & Specifications\n- [2026-10-10] Submit ass1.sql via give. Must load cleanly with psql on vxdb.\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-10-12] Q1, Q2 and Q3 views written and checked against the expected output.\n\n## Plan Adjustments\n",
+      "done_items": ["Write Q1 view", "Write Q2 view", "Write Q3 view", "Set up the database on vxdb"]
+    },
+    {
+      "id": "atlassian-internship-application",
+      "description": "Job application: resume + cover letter.",
+      "tags": ["job-application"],
+      "depth": "Brief",
+      "deadline_offset_days": 6,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "Apply for the Atlassian 2027 summer software engineering internship. Need a tailored resume and a cover letter. Applications close in 6 days."}]
+    },
+    {
+      "id": "clean-room-today",
+      "description": "Small chore, today. Should not interrogate the user.",
+      "tags": ["chore", "short-deadline"],
+      "depth": "Brief",
+      "deadline_offset_days": 0,
+      "expect_clarify": "ready",
+      "messages": [{"role": "user", "content": "clean my room"}]
+    },
+    {
+      "id": "avoided-supervisor-email",
+      "description": "Emotionally avoided email; profile has a matching friction pattern.",
+      "tags": ["chore", "friction", "profile", "short-deadline"],
+      "depth": "Brief",
+      "deadline_offset_days": 0,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "reply to an email from my thesis supervisor that I've been avoiding for 2 weeks. She asked for a progress update and I don't have much progress."}],
+      "user_profile": "## About Me\n- Final-year UNSW computer science student doing honours.\n\n## Preferences\n- Short, warm messages. Hates corporate tone.\n\n## Patterns & Friction\n- Avoids emails when I feel I've let someone down; the longer I wait the worse it gets.\n- Over-drafts messages and rewrites them 10 times.\n"
+    },
+    {
+      "id": "life-together-vague",
+      "description": "Extremely vague, broad ask. Must clarify.",
+      "tags": ["vague", "long-deadline"],
+      "depth": "Brief",
+      "deadline_offset_days": 30,
+      "expect_clarify": "ask",
+      "messages": [{"role": "user", "content": "I need to get my life together for uni this term"}]
+    },
+    {
+      "id": "help-me-study",
+      "description": "One-word-ish ask with Deep depth.",
+      "tags": ["vague", "exam"],
+      "depth": "Deep",
+      "deadline_offset_days": 7,
+      "expect_clarify": "ask",
+      "messages": [{"role": "user", "content": "help me study"}]
+    },
+    {
+      "id": "comp6080-exam-tomorrow",
+      "description": "Practical frontend exam tomorrow, Deep.",
+      "tags": ["exam", "coding", "comp", "short-deadline"],
+      "depth": "Deep",
+      "deadline_offset_days": 1,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "COMP6080 final exam is tomorrow - it's a 3 hour practical where we build React components and fix a broken app. Open book. I'm rusty on React hooks and CSS flexbox."}]
+    },
+    {
+      "id": "honours-lit-review",
+      "description": "Long deadline thesis chapter with a perfectionism profile and some work done.",
+      "tags": ["essay", "long-deadline", "ledger", "profile", "friction"],
+      "depth": "Deep",
+      "deadline_offset_days": 35,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "Write the literature review chapter (~6000 words) for my honours thesis on federated learning for medical imaging."}],
+      "context_ledger": "## Constraints & Specifications\n- [2026-09-20] Chapter 2 of thesis, ~6000 words, IEEE citations, LaTeX template from the school.\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-09-28] Collected 25 relevant papers into Zotero with tags.\n- [2026-10-03] Wrote a section-level outline: background, FL algorithms, privacy, medical imaging applications, open problems.\n\n## Plan Adjustments\n",
+      "user_profile": "## About Me\n- Honours student, UNSW CSE.\n\n## Preferences\n- Works best in the morning.\n\n## Patterns & Friction\n- Perfectionist: rewrites the first paragraph forever and never moves on.\n- Reads papers endlessly instead of writing.\n",
+      "done_items": ["Collect papers into Zotero", "Find relevant papers", "Write an outline of the literature review sections"]
+    },
+    {
+      "id": "comp2511-design-patterns-ledger",
+      "description": "Ledger-heavy coding task where most early work is done - tests no redundant work.",
+      "tags": ["coding", "comp", "ledger"],
+      "depth": "Deep",
+      "deadline_offset_days": 8,
+      "expect_clarify": "ready",
+      "messages": [{"role": "user", "content": "Finish the COMP2511 assignment - the design patterns refactor of the dungeon game."}],
+      "context_ledger": "## Constraints & Specifications\n- [2026-10-01] Java 17, Gradle. Must apply at least 3 design patterns and justify each in design.md.\n- [2026-10-01] Final UML class diagram required (PDF).\n- [2026-10-01] Marked on design quality (50%), correctness via autotests (30%), design.md justification (20%).\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-10-04] Drew the initial UML class diagram of the existing code.\n- [2026-10-07] Implemented the Observer pattern for the notification system.\n- [2026-10-09] Wrote JUnit tests for the Observer implementation (passing).\n\n## Plan Adjustments\n- [2026-10-10] Request: \"Skip the Singleton idea\" -> Removed Singleton refactor steps.\n",
+      "done_items": ["Draw the initial UML class diagram", "Implement the Observer pattern for notifications", "Write JUnit tests for the Observer", "Refactor to Singleton"]
+    },
+    {
+      "id": "mgmt-group-presentation",
+      "description": "Group presentation where the friction is unresponsive teammates.",
+      "tags": ["group", "presentation", "friction"],
+      "depth": "Brief",
+      "deadline_offset_days": 6,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "MGMT1001 group presentation next Wednesday, 10 minutes, 4 of us. I'm doing the market analysis slides and nobody has replied in the group chat for 4 days."}]
+    },
+    {
+      "id": "centrelink-reporting",
+      "description": "Life admin chore with a 2-day deadline.",
+      "tags": ["chore", "admin", "short-deadline"],
+      "depth": "Brief",
+      "deadline_offset_days": 2,
+      "expect_clarify": "ready",
+      "messages": [{"role": "user", "content": "Do my Centrelink Youth Allowance fortnightly income reporting and upload my last two payslips. Due in 2 days."}]
+    },
+    {
+      "id": "psyc-reading-adhd-profile",
+      "description": "Reading task, profile with phone-distraction friction.",
+      "tags": ["reading", "profile", "friction"],
+      "depth": "Brief",
+      "deadline_offset_days": 4,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "Read chapters 4-6 of the PSYC1001 textbook before Monday's tutorial."}],
+      "user_profile": "## About Me\n- First-year psych student.\n\n## Preferences\n- 15-minute sessions max, then a break.\n\n## Patterns & Friction\n- Phone is the main distraction - picks it up within 5 minutes of starting.\n- Reads passively and retains nothing unless writing notes.\n"
+    },
+    {
+      "id": "portfolio-website-3wk",
+      "description": "Personal coding project, long deadline, evenings-only profile.",
+      "tags": ["coding", "long-deadline", "profile"],
+      "depth": "Deep",
+      "deadline_offset_days": 21,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "Build a personal portfolio website to put on my internship applications."}],
+      "user_profile": "## About Me\n- 2nd year UNSW comp sci student, knows React from COMP6080.\n\n## Preferences\n- Can only work weeknights after 7pm, prefers short focused sessions.\n\n## Patterns & Friction\n- Gets stuck choosing frameworks/themes instead of building.\n"
+    },
+    {
+      "id": "comp1511-spec-avoidance",
+      "description": "Assignment with spec-avoidance friction, some setup done in ledger.",
+      "tags": ["coding", "comp", "ledger", "profile", "friction"],
+      "depth": "Deep",
+      "deadline_offset_days": 10,
+      "expect_clarify": "either",
+      "messages": [{"role": "user", "content": "COMP1511 assignment 1 (CS Bricks, a breakout game in C). I keep opening the spec and closing it again."}],
+      "context_ledger": "## Constraints & Specifications\n- [2026-10-06] Single file cs_bricks.c, must pass autotests and style check (1511 style).\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-10-08] Read the spec once all the way through.\n- [2026-10-09] Set up VS Code with SSH to CSE and copied the starter code.\n\n## Plan Adjustments\n",
+      "user_profile": "## About Me\n- First-year UNSW student, first time programming.\n\n## Preferences\n\n## Patterns & Friction\n- Freezes when a spec is long; procrastinates by reorganising notes.\n",
+      "done_items": ["Read the spec", "Set up VS Code with SSH to CSE", "Copy the starter code"]
+    },
+    {
+      "id": "comp3121-problem-set-tonight",
+      "description": "Deep depth with a same-day deadline and partial completion.",
+      "tags": ["coding", "comp", "short-deadline", "ledger"],
+      "depth": "Deep",
+      "deadline_offset_days": 0,
+      "expect_clarify": "ready",
+      "messages": [{"role": "user", "content": "Finish my COMP3121 problem set tonight (due 11:59pm): 4 questions on dynamic programming, each needs a recurrence, proof of correctness and runtime analysis. I've finished Q1."}],
+      "context_ledger": "## Constraints & Specifications\n- [2026-10-01] Typed PDF submission. Each answer: subproblem definition, recurrence, base cases, order of computation, runtime.\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-10-14] Q1 fully written up (recurrence, proof, runtime).\n\n## Plan Adjustments\n",
+      "done_items": ["Solve Q1", "Write up Q1", "Write the recurrence for Q1"]
+    }
+  ]
+}
