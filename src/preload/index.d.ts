@@ -1,5 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import { ChatTurnPayload, DecompositionResult, EngineResponse, LedgerNote, Subtask, Prerequisite, UpcomingTask, UpcomingSubtask, ActivityStats } from '../common/types'
+import { AppSettings } from '../common/models'
 
 declare global {
   interface Window {
@@ -34,6 +35,8 @@ declare global {
       getUpcomingTasks: () => Promise<UpcomingTask[]>;
       getUpcomingSubtasks: () => Promise<UpcomingSubtask[]>;
       getActivityStats: () => Promise<ActivityStats>;
+      getSettings: () => Promise<AppSettings>;
+      saveSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
       onOpenFocus: (callback: () => void) => () => void;
       }
   }

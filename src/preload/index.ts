@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { ChatTurnPayload, DecompositionResult, LedgerNote } from '../common/types'
+import { AppSettings } from '../common/models'
 
 // Custom APIs for renderer
 const api = {
@@ -84,6 +85,12 @@ const api = {
 
   // Completion activity across all projects: streak counts + per-day heatmap
   getActivityStats: () => ipcRenderer.invoke('get-activity-stats'),
+
+  // Persisted app settings (model choices, AI nudges) in system/settings.json
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+
+  // Merges a partial update into the stored settings; resolves with the result
+  saveSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke('save-settings', patch),
 
   // Fired when the user clicks a procrastination nudge notification - the
   // renderer should jump into Start Now. Returns an unsubscribe function.
