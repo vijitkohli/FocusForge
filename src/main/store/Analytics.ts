@@ -1,5 +1,5 @@
 import { ActivityStats, UpcomingSubtask } from '../../common/types'
-import { localDateKey } from './paths'
+import { localDateKey, parseLocalDate } from './paths'
 import { ProjectStore } from './ProjectStore'
 
 /**
@@ -33,9 +33,8 @@ export class Analytics {
           if (subtask.isCompleted) continue
 
           const dateStr = subtask.scheduledDate ?? task.deadline
-          const subDate = new Date(dateStr)
+          const subDate = parseLocalDate(dateStr)
           if (isNaN(subDate.getTime())) continue
-          subDate.setHours(0, 0, 0, 0)
 
           const daysRemaining = Math.round(
             (subDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
