@@ -85,6 +85,8 @@ export interface Prerequisite {
     id: string;
     title: string;
     kind?: 'learn' | 'acquire' | 'setup';
+    // Minutes; prerequisites are capped small (<=15) by the execution prompt
+    timeEstimate?: number;
     isCompleted: boolean;
 }
 
