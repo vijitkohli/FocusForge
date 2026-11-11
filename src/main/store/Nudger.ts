@@ -46,7 +46,16 @@ export class Nudger {
     const hour = new Date().getHours()
     if (hour < 8 || hour >= 22) return null // quiet hours
 
-    const upcoming = await this.analytics.getUpcomingSubtasks()
+    // Only active items are nudged; paused and archived ones stay quiet.
+    const activeIds = new Set(
+      this.projects
+        .getProjects()
+        .filter((p) => p.status === 'active')
+        .map((p) => p.id)
+    )
+    const upcoming = (await this.analytics.getUpcomingSubtasks()).filter((s) =>
+      activeIds.has(s.projectId)
+    )
     if (upcoming.length === 0) return null
 
     const todayKey = localDateKey(new Date())
@@ -74,7 +83,7 @@ export class Nudger {
       const now = Date.now()
       const stale = this.projects
         .getProjects()
-        .filter((p) => projectsWithWork.has(p.id))
+        .filter((p) => p.status === 'active' && projectsWithWork.has(p.id))
         .filter((p) => (now - new Date(p.lastActive).getTime()) / 86400000 >= NUDGE_IDLE_DAYS)
         .filter((p) => !alreadyNudged(`proj:${p.id}`))
         .sort((a, b) => new Date(a.lastActive).getTime() - new Date(b.lastActive).getTime())
