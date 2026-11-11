@@ -6,8 +6,15 @@ import {
   ProjectTask,
   SaveResult,
   Subtask,
+  Workstream,
+  WorkstreamPatch,
   LEDGER_SECTIONS
 } from '../../common/types'
+import {
+  sanitizeWorkstreamPatch,
+  uniqueProjectId,
+  withWorkstreamDefaults
+} from '../../common/workstreams'
 import {
   ROOT_DIR,
   SYSTEM_DIR,
@@ -24,6 +31,16 @@ import { withLock } from './locks'
 import { writeFileAtomicSync, writeJsonAtomic, writeJsonAtomicSync } from './atomic'
 
 export type { SaveResult }
+
+export type WorkstreamOp =
+  | { op: 'create'; fields: WorkstreamPatch & { name: string } }
+  | { op: 'update'; id: string; patch: WorkstreamPatch }
+
+export interface ApplyWorkstreamsResult {
+  created: string[]
+  updated: string[]
+  failed: string[]
+}
 
 /** Result of an in-lock mutation: the new data plus ledger notes, or null to skip saving. */
 export type ProjectMutation = { data: ProjectData; notes?: LedgerNote[] } | null
@@ -75,45 +92,139 @@ export class ProjectStore {
     }
   }
 
-  async createProject(projectName: string): Promise<ProjectSummary> {
-    // Replace anything that's not a letter or number with underscore
-    const safeName = projectName.replace(/[^a-z0-9]/gi, '_')
-    const projectPath = path.join(ROOT_DIR, safeName)
+  /**
+   * Creates a project (item). The id is unique against the registry and any
+   * existing folder, so a second "Thesis" gets `Thesis_2` instead of
+   * overwriting the first. `fields` are the item fields to store explicitly;
+   * anything left out is filled by withWorkstreamDefaults on read.
+   */
+  async createProject(projectName: string, fields: WorkstreamPatch = {}): Promise<Workstream> {
+    const patch = sanitizeWorkstreamPatch(fields)
+    const name = (typeof projectName === 'string' && projectName.trim()) || patch.name || 'Untitled'
 
-    fs.ensureDirSync(path.join(projectPath, 'sources'))
-    fs.ensureDirSync(path.join(projectPath, '.db'))
-
-    const initialData: ProjectData = {
-      name: projectName,
-      created: new Date().toISOString(),
-      tasks: []
-    }
-    writeJsonAtomicSync(projectDataPath(safeName), initialData)
-    writeFileAtomicSync(ledgerPath(safeName), emptyLedgerContents())
-
-    const newSummary: ProjectSummary = {
-      id: safeName,
-      name: projectName,
-      path: projectPath,
-      progress: 0,
-      lastActive: new Date().toISOString()
-    }
-
-    await withLock('registry', async () => {
+    const summary = await withLock('registry', async () => {
       const registry: ProjectSummary[] = await fs.readJSON(REGISTRY_PATH)
+      const taken = new Set(registry.map((p) => p.id))
+      let id = uniqueProjectId(name, taken)
+      while (fs.existsSync(path.join(ROOT_DIR, id))) {
+        taken.add(id)
+        id = uniqueProjectId(name, taken)
+      }
+      const projectPath = path.join(ROOT_DIR, id)
+
+      fs.ensureDirSync(path.join(projectPath, 'sources'))
+      fs.ensureDirSync(path.join(projectPath, '.db'))
+      const initialData: ProjectData = {
+        name,
+        created: new Date().toISOString(),
+        tasks: []
+      }
+      writeJsonAtomicSync(projectDataPath(id), initialData)
+      writeFileAtomicSync(ledgerPath(id), emptyLedgerContents())
+
+      const newSummary: ProjectSummary = {
+        id,
+        name,
+        path: projectPath,
+        progress: 0,
+        lastActive: new Date().toISOString(),
+        ...(patch.category ? { category: patch.category } : {}),
+        ...(patch.kind ? { kind: patch.kind } : {}),
+        ...(patch.status ? { status: patch.status } : {}),
+        ...(patch.sources ? { sources: patch.sources } : {})
+      }
       registry.push(newSummary)
       await writeJsonAtomic(REGISTRY_PATH, registry)
+      return newSummary
     })
 
-    return newSummary
+    return withWorkstreamDefaults(summary)
   }
 
-  getProjects(): ProjectSummary[] {
+  /** Registry entries with the item fields filled in. The file itself is not rewritten. */
+  getProjects(): Workstream[] {
     try {
-      return fs.readJSONSync(REGISTRY_PATH)
+      const registry = fs.readJSONSync(REGISTRY_PATH)
+      return Array.isArray(registry) ? registry.map(withWorkstreamDefaults) : []
     } catch {
       return []
     }
+  }
+
+  /** Registry entries exactly as stored (discovery tells saved fields from defaults). */
+  getRegistryEntries(): ProjectSummary[] {
+    try {
+      const registry = fs.readJSONSync(REGISTRY_PATH)
+      return Array.isArray(registry) ? registry : []
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Patches only the item fields present in `patch`, under the registry lock.
+   * Sources must already have passed the guard (the IPC layer checks them).
+   * A rename also updates project_data.json's name (bumping its rev), outside
+   * the registry lock to respect lock order.
+   */
+  async updateWorkstream(
+    projectId: string,
+    rawPatch: WorkstreamPatch
+  ): Promise<{ success: boolean; error?: string }> {
+    const patch = sanitizeWorkstreamPatch(rawPatch)
+    let renamed = false
+    try {
+      const found = await withLock('registry', async () => {
+        const registry: ProjectSummary[] = await fs.readJSON(REGISTRY_PATH)
+        const entry = registry.find((p) => p.id === projectId)
+        if (!entry) return false
+        if (patch.name !== undefined && patch.name !== entry.name) {
+          entry.name = patch.name
+          renamed = true
+        }
+        if (patch.category !== undefined) entry.category = patch.category
+        if (patch.kind !== undefined) entry.kind = patch.kind
+        if (patch.status !== undefined) entry.status = patch.status
+        if (patch.sources !== undefined) entry.sources = patch.sources
+        await writeJsonAtomic(REGISTRY_PATH, registry)
+        return true
+      })
+      if (!found) return { success: false, error: 'not-found' }
+      if (renamed && patch.name) {
+        const name = patch.name
+        await this.updateProjectData(projectId, async (data) =>
+          data.name === name ? null : { data: { ...data, name } }
+        )
+      }
+      return { success: true }
+    } catch (error) {
+      console.error(`Failed to update item ${projectId}:`, error)
+      return { success: false, error: (error as Error).message }
+    }
+  }
+
+  /**
+   * Applies an approved batch: creates run one by one, updates patch only the
+   * given keys. Nothing is ever deleted here.
+   */
+  async applyWorkstreams(ops: WorkstreamOp[]): Promise<ApplyWorkstreamsResult> {
+    const result: ApplyWorkstreamsResult = { created: [], updated: [], failed: [] }
+    for (const op of ops) {
+      try {
+        if (op.op === 'create') {
+          const ws = await this.createProject(op.fields.name ?? '', op.fields)
+          result.created.push(ws.id)
+        } else {
+          const r = await this.updateWorkstream(op.id, op.patch)
+          if (r.success) result.updated.push(op.id)
+          else result.failed.push(op.id)
+        }
+      } catch (error) {
+        console.error('Failed to apply an item change:', error)
+        result.failed.push(op.op === 'create' ? (op.fields.name ?? '') : op.id)
+      }
+    }
+    return result
   }
 
   /**
