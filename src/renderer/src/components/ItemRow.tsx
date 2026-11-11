@@ -53,7 +53,7 @@ function SourceChip({
         icon={X}
         disabled={disabled}
         onClick={onDetach}
-        className="size-6"
+        className="size-6!"
       />
     </li>
   )
