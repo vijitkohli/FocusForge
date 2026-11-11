@@ -1,9 +1,11 @@
 {
-  "_comment": "Eval cases for engine/main.py. Deadlines are relative (deadline_offset_days from the run date) so the suite stays reproducible on any day. expect_clarify: 'ask' = a good coach should ask first, 'ready' = enough context to plan immediately, 'either' = defensible both ways. done_items = work the ledger marks complete (used by the no-redundant-work scorer). estimate_ratio = measured actual/estimate pace, sent as estimateRatio.",
+  "_comment": "Eval cases for engine/main.py. Deadlines are relative (deadline_offset_days from the run date) so the suite stays reproducible on any day. expect_clarify: 'ask' = a good coach should ask first, 'ready' = enough context to plan immediately, 'either' = defensible both ways. done_items = work the ledger marks complete (used by the no-redundant-work scorer). estimate_ratio = measured actual/estimate pace, sent as estimateRatio. expected_effort_minutes = [min, max] realistic total effort for a typical UNSW student to finish the remaining work to a passing standard (effort_rationale explains it); used by the coverage scorer, never sent to the engine.",
   "cases": [
     {
       "id": "cold-war-essay-vague",
       "description": "Classic vague essay ask (the known gemini-3-flash skip case).",
+      "expected_effort_minutes": [480, 1200],
+      "effort_rationale": "2000-word uni essay: finding and reading ~6-8 sources (4-8 h), drafting (3-6 h), referencing and editing (1-2 h); a 1st-year typically spends 8-20 h.",
       "tags": ["essay", "vague"],
       "depth": "Brief",
       "deadline_offset_days": 10,
@@ -13,6 +15,8 @@
     {
       "id": "cold-war-essay-answered",
       "description": "Same essay, but the coach already asked and the user answered in detail. Should stop asking.",
+      "expected_effort_minutes": [600, 1200],
+      "effort_rationale": "Same 2000 words but with 8 scholarly sources from zero and Chicago footnotes: sourcing/reading 5-10 h plus 4-8 h drafting/editing; 10-20 h.",
       "tags": ["essay", "multi-turn", "friction"],
       "depth": "Brief",
       "deadline_offset_days": 10,
@@ -26,6 +30,8 @@
     {
       "id": "comp2521-graph-assignment",
       "description": "Big data structures coding assignment, two weeks out, no spec details given.",
+      "expected_effort_minutes": [900, 1800],
+      "effort_rationale": "COMP2521 assignments are commonly reported at 15-30 h: reading the spec, designing the graph ADT, implementing route search in C, testing/debugging, style.",
       "tags": ["coding", "comp"],
       "depth": "Deep",
       "deadline_offset_days": 14,
@@ -35,6 +41,8 @@
     {
       "id": "comp1531-group-iteration",
       "description": "Group project iteration with ledger showing setup already done.",
+      "expected_effort_minutes": [360, 900],
+      "effort_rationale": "Three remaining Flask routes (channels_create done) each with implementation + unit + HTTP tests (~1.5-3 h each), plus coverage to 90% and pipeline fixes; 6-15 h.",
       "tags": ["coding", "group", "ledger"],
       "depth": "Deep",
       "deadline_offset_days": 9,
@@ -46,6 +54,8 @@
     {
       "id": "chem-lab-report-tomorrow",
       "description": "Lab report due tomorrow - very short deadline.",
+      "expected_effort_minutes": [180, 360],
+      "effort_rationale": "First-year titration report from existing data: calculations and error analysis (1-1.5 h), results/discussion writing (1.5-3 h), formatting and check (0.5 h); 3-6 h.",
       "tags": ["lab-report", "short-deadline"],
       "depth": "Brief",
       "deadline_offset_days": 1,
@@ -55,6 +65,8 @@
     {
       "id": "math1231-exam-revision",
       "description": "Exam revision with a long-ish runway and a weak topic.",
+      "expected_effort_minutes": [900, 2400],
+      "effort_rationale": "Learning the untouched linear-algebra half (~5-6 weeks of lectures) to a passing standard: re-learn topics, tutorial problems, 1-2 past papers; 15-40 h.",
       "tags": ["exam", "long-deadline"],
       "depth": "Deep",
       "deadline_offset_days": 21,
@@ -64,6 +76,8 @@
     {
       "id": "comp3311-sql-tomorrow",
       "description": "Deep breakdown of a database assignment due tomorrow.",
+      "expected_effort_minutes": [300, 720],
+      "effort_rationale": "Seven remaining SQL/PL/pgSQL questions at ~40-90 min each (later ones are harder), plus testing against expected output and a clean psql load on vxdb; 5-12 h.",
       "tags": ["coding", "comp", "short-deadline"],
       "depth": "Deep",
       "deadline_offset_days": 1,
@@ -75,6 +89,8 @@
     {
       "id": "atlassian-internship-application",
       "description": "Job application: resume + cover letter.",
+      "expected_effort_minutes": [180, 420],
+      "effort_rationale": "Tailoring an existing resume to the role (1-2 h), writing a tailored cover letter from scratch (1.5-3 h), researching Atlassian values and submitting the form (0.5-1 h); 3-7 h.",
       "tags": ["job-application"],
       "depth": "Brief",
       "deadline_offset_days": 6,
@@ -84,6 +100,8 @@
     {
       "id": "clean-room-today",
       "description": "Small chore, today. Should not interrogate the user.",
+      "expected_effort_minutes": [30, 120],
+      "effort_rationale": "Tidying a student bedroom (clothes, desk, rubbish, vacuum) typically takes 30 min to 2 h depending on mess.",
       "tags": ["chore", "short-deadline"],
       "depth": "Brief",
       "deadline_offset_days": 0,
@@ -93,6 +111,8 @@
     {
       "id": "avoided-supervisor-email",
       "description": "Emotionally avoided email; profile has a matching friction pattern.",
+      "expected_effort_minutes": [15, 45],
+      "effort_rationale": "A short honest progress-update email: jot what was done/blocked and next steps, write, send; 15-45 min (the difficulty is emotional, not volume).",
       "tags": ["chore", "friction", "profile", "short-deadline"],
       "depth": "Brief",
       "deadline_offset_days": 0,
@@ -103,6 +123,8 @@
     {
       "id": "life-together-vague",
       "description": "Extremely vague, broad ask. Must clarify.",
+      "expected_effort_minutes": [120, 360],
+      "effort_rationale": "Ambiguous; scoped to term set-up only: collect course outlines, enter all assessment dates into a calendar/planner, set a weekly study timetable and routines; 2-6 h.",
       "tags": ["vague", "long-deadline"],
       "depth": "Brief",
       "deadline_offset_days": 30,
@@ -112,6 +134,8 @@
     {
       "id": "help-me-study",
       "description": "One-word-ish ask with Deep depth.",
+      "expected_effort_minutes": [240, 900],
+      "effort_rationale": "Ambiguous; assumed one week of preparation for one upcoming test/exam in one course: ~1-2 h/day over the week; 4-15 h.",
       "tags": ["vague", "exam"],
       "depth": "Deep",
       "deadline_offset_days": 7,
@@ -121,6 +145,8 @@
     {
       "id": "comp6080-exam-tomorrow",
       "description": "Practical frontend exam tomorrow, Deep.",
+      "expected_effort_minutes": [120, 360],
+      "effort_rationale": "Night-before prep for a 3 h open-book practical (exam itself not counted): refresh hooks and flexbox, build a small practice component, prepare open-book notes, logistics; 2-6 h.",
       "tags": ["exam", "coding", "comp", "short-deadline"],
       "depth": "Deep",
       "deadline_offset_days": 1,
@@ -130,6 +156,8 @@
     {
       "id": "honours-lit-review",
       "description": "Long deadline thesis chapter with a perfectionism profile and some work done.",
+      "expected_effort_minutes": [1800, 3600],
+      "effort_rationale": "6000-word honours chapter with 25 papers collected but unread: close reading/notes on 25 papers (~1-1.5 h each, 25-35 h), drafting 6000 words (12-20 h), revision and IEEE references (4-6 h); 30-60 h.",
       "tags": ["essay", "long-deadline", "ledger", "profile", "friction"],
       "depth": "Deep",
       "deadline_offset_days": 35,
@@ -142,6 +170,8 @@
     {
       "id": "comp2511-design-patterns-ledger",
       "description": "Ledger-heavy coding task where most early work is done - tests no redundant work.",
+      "expected_effort_minutes": [600, 1200],
+      "effort_rationale": "Remaining: at least 2 more patterns refactored into the dungeon code with tests, keeping autotests green, design.md justification for 3 patterns, final UML PDF; 10-20 h.",
       "tags": ["coding", "comp", "ledger"],
       "depth": "Deep",
       "deadline_offset_days": 8,
@@ -153,6 +183,8 @@
     {
       "id": "mgmt-group-presentation",
       "description": "Group presentation where the friction is unresponsive teammates.",
+      "expected_effort_minutes": [180, 420],
+      "effort_rationale": "Own share of a 10-min group talk: market-analysis research (1-2 h), building 2-4 slides (1-2 h), chasing the group/merging deck and 1-2 rehearsals (1 h); 3-7 h.",
       "tags": ["group", "presentation", "friction"],
       "depth": "Brief",
       "deadline_offset_days": 6,
@@ -162,6 +194,8 @@
     {
       "id": "centrelink-reporting",
       "description": "Life admin chore with a 2-day deadline.",
+      "expected_effort_minutes": [15, 45],
+      "effort_rationale": "Fortnightly Youth Allowance reporting online plus finding/downloading and uploading two payslips: 15-45 min.",
       "tags": ["chore", "admin", "short-deadline"],
       "depth": "Brief",
       "deadline_offset_days": 2,
@@ -171,6 +205,8 @@
     {
       "id": "psyc-reading-adhd-profile",
       "description": "Reading task, profile with phone-distraction friction.",
+      "expected_effort_minutes": [180, 360],
+      "effort_rationale": "Three intro-psych textbook chapters (~30-40 pages each) read actively with notes at ~1-2 h per chapter; 3-6 h.",
       "tags": ["reading", "profile", "friction"],
       "depth": "Brief",
       "deadline_offset_days": 4,
@@ -181,6 +217,8 @@
     {
       "id": "portfolio-website-3wk",
       "description": "Personal coding project, long deadline, evenings-only profile.",
+      "expected_effort_minutes": [600, 1500],
+      "effort_rationale": "A deployed React portfolio from scratch: content/copy and project write-ups (3-5 h), layout and styling (4-8 h), responsiveness, deploy and domain (2-4 h); 10-25 h.",
       "tags": ["coding", "long-deadline", "profile"],
       "depth": "Deep",
       "deadline_offset_days": 21,
@@ -191,6 +229,8 @@
     {
       "id": "comp1511-spec-avoidance",
       "description": "Assignment with spec-avoidance friction, some setup done in ledger.",
+      "expected_effort_minutes": [900, 1800],
+      "effort_rationale": "COMP1511 assignment 1 for a first-time programmer (spec read, starter set up): implementing the game stages in C, testing, autotests, style fixes; commonly 15-30 h.",
       "tags": ["coding", "comp", "ledger", "profile", "friction"],
       "depth": "Deep",
       "deadline_offset_days": 10,
@@ -203,6 +243,8 @@
     {
       "id": "comp3121-problem-set-tonight",
       "description": "Deep depth with a same-day deadline and partial completion.",
+      "expected_effort_minutes": [180, 360],
+      "effort_rationale": "Three remaining DP questions each needing subproblem/recurrence, proof of correctness and runtime write-up, typed: ~1-2 h each; 3-6 h.",
       "tags": ["coding", "comp", "short-deadline", "ledger"],
       "depth": "Deep",
       "deadline_offset_days": 0,
@@ -214,6 +256,8 @@
     {
       "id": "comp2521-graph-assignment-slow-pace",
       "description": "Same as comp2521-graph-assignment, but Focus data says this student takes 1.6x the estimates: steps must still respect the size limits (split, don't inflate).",
+      "expected_effort_minutes": [900, 1800],
+      "effort_rationale": "Same work as comp2521-graph-assignment (range is in typical-student minutes; the 1.6x pace should split steps, not shrink scope).",
       "tags": ["coding", "comp", "pace"],
       "depth": "Deep",
       "deadline_offset_days": 14,
@@ -226,6 +270,8 @@
     {
       "id": "chem-lab-report-tomorrow-slow-pace",
       "description": "Same as chem-lab-report-tomorrow, but Focus data says this student takes 1.6x the estimates: steps must still respect the size limits (split, don't inflate).",
+      "expected_effort_minutes": [180, 360],
+      "effort_rationale": "Same work as chem-lab-report-tomorrow (range in typical-student minutes).",
       "tags": ["lab-report", "short-deadline", "pace"],
       "depth": "Brief",
       "deadline_offset_days": 1,
