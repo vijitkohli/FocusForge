@@ -5,6 +5,8 @@ export type { FocusScope }
 export type View =
   | { name: 'now' }
   | { name: 'library' }
+  // The item approval screen (discovery results); first run lands here
+  | { name: 'items' }
   | { name: 'project'; projectId: string }
   // planTaskId: plan an existing unplanned task (e.g. imported from a course outline)
   | { name: 'coach'; projectId: string; planTaskId?: string }

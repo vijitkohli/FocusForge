@@ -20,6 +20,17 @@ BRIEF_MAX_MINUTES = 60
 FIRST_STEP_MAX_MINUTES = 15
 VALID_DIFFICULTY = {"easy", "medium", "hard"}
 VALID_KINDS = {"learn", "acquire", "setup"}
+# Coverage: a plan "covers" the task when its total planned minutes reach this
+# share of the case's expected_effort_minutes lower bound. 0.6 leaves room for
+# LLM estimates being optimistic per step (planning-fallacy studies put
+# self-estimates at roughly 0.5-0.8x actual) and for ranges being rough, while
+# still failing plans that are a small fraction of the work (e.g. 3 h of steps
+# for a 30-60 h lit review). Reported separately from `hard`/`all` so earlier
+# pass rates stay comparable.
+COVERAGE_PASS_RATIO = 0.6
+# Above this multiple of the upper bound the plan is flagged as over-planned
+# (informational only - it never fails coverage).
+COVERAGE_OVER_RATIO = 2.0
 
 _VAGUE_LEADS = (
     "study", "work on", "research", "look at", "look into", "go over", "think about",
@@ -267,6 +278,46 @@ def score_plan(record, case):
         "total_minutes": sum(s["timeEstimate"] for s in subtasks if _is_int(s.get("timeEstimate"))),
         "hard_pass": hard_pass,
         "all_pass": all_pass,
+        # Kept out of `checks` so hard/all pass rates stay comparable with
+        # earlier runs; reported as its own column.
+        "coverage": score_coverage(record, case),
+    }
+
+
+def planned_minutes(data):
+    """Sum of integer timeEstimates over subtasks AND prerequisites."""
+    if not isinstance(data, dict):
+        return 0
+    total = 0
+    for key in ("subtasks", "prerequisites"):
+        items = data.get(key)
+        if isinstance(items, list):
+            total += sum(i["timeEstimate"] for i in items
+                         if isinstance(i, dict) and _is_int(i.get("timeEstimate")) and i["timeEstimate"] > 0)
+    return total
+
+
+def score_coverage(record, case):
+    """
+    Would doing every step add up to the task? Compares total planned minutes
+    with the case's expected_effort_minutes [lo, hi]. Returns None when the
+    case has no expected range. ratio = planned / lo.
+    """
+    rng = case.get("expected_effort_minutes")
+    if not (isinstance(rng, (list, tuple)) and len(rng) == 2):
+        return None
+    lo, hi = int(rng[0]), int(rng[1])
+    total = planned_minutes((record.get("result") or {}).get("data"))
+    ratio = total / lo if lo else None
+    ok = ratio is not None and ratio >= COVERAGE_PASS_RATIO
+    over = total > COVERAGE_OVER_RATIO * hi
+    return {
+        "pass": ok,
+        "planned_minutes": total,
+        "expected": [lo, hi],
+        "ratio": round(ratio, 3) if ratio is not None else None,
+        "over": over,
+        "detail": f"{total} min planned vs expected {lo}-{hi} ({ratio:.0%} of min)" + (" [over-planned]" if over else ""),
     }
 
 

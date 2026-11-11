@@ -36,7 +36,9 @@ import {
 } from './engine'
 import { PythonShell } from 'python-shell'
 import { mergeChecklist, requestsRemovingCompleted } from '../common/merge'
-import { loadSettings, saveSettings } from './settings'
+import { loadSettings, saveSettings, sanitizeRendererSettingsPatch } from './settings'
+import { registerSourceHandlers, guardedCreateFields } from './ipc/sources'
+import { invalidateGuard } from './sources'
 import fs from 'fs-extra'
 import { BACKUP_DIR } from './store/paths'
 
@@ -383,8 +385,17 @@ function createWindow(): void {
   })
 
   // Create a new project
-  ipcMain.handle('create-project', (_event, name) => {
-    return fsManager.createProject(name)
+  // Optional item fields (category etc.); sources are guard-checked
+  ipcMain.handle('create-project', async (_event, name, fields) => {
+    return fsManager.createProject(name, fields ? await guardedCreateFields(fields) : undefined)
+  })
+
+  // Item discovery, approval and vault choice (src/main/ipc/sources.ts)
+  registerSourceHandlers({
+    fsManager,
+    notifyTasksChanged: () => {
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send('tasks-changed')
+    }
   })
 
   ipcMain.handle('save-project-data', (_event, id, data, notes, expectedRev) =>
@@ -492,7 +503,12 @@ function createWindow(): void {
     return error ? { success: false, error } : { success: true }
   })
 
-  ipcMain.handle('save-settings', (_event, patch) => saveSettings(patch))
+  // Renderer patches can't change what FocusForge reads (vault, roots, categories)
+  ipcMain.handle('save-settings', async (_event, patch) => {
+    const next = await saveSettings(sanitizeRendererSettingsPatch(patch))
+    invalidateGuard()
+    return next
+  })
 
   ipcMain.handle('reset-all-data', async () => {
     const { response } = await dialog.showMessageBox({

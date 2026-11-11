@@ -1,0 +1,711 @@
+{
+  "_comment": "Multi-turn intake cases. The harness plays the student with FIXED scripted replies (never a model): turn 1 sends `opening`; each time the coach asks, the next entry of `replies` is sent (then `fallback_reply` once they run out). Like the app, durable notes the engine emits on a turn are appended to the ledger/profile sent on the next turn. questions = [min, max] clarifying questions a good coach asks before building the plan (the engine forces a plan at 5 user turns). answered = facts the student has given: `turn` is the user message index that supplied it (0 = opening, -1 = ledger/profile) and `ask` is a regex matching a coach question that asks for it again (checked case-insensitively on questions asked after that turn). expected_notes = facts (only scored when the user message `from_turn` that states them was actually sent) the extractor should record across the conversation: field notes|userNotes|any, optional sections, and keyword groups (all groups must match one note; any word within a group). forbidden_user_notes = task-specific words that must NOT land in the global user profile. forbidden_notes = facts already in the ledger that must not be re-recorded. plan_mentions = keyword groups (each {groups, from_turn}) that should each appear in some plan step title (deterministic proxy for 'plan uses the answers'); plan_forbidden = regexes no step title may match (e.g. redoing finished work); plan_max_minutes = a stated per-step limit. plan_forbidden entries are a regex or {regex, from_turn}; plan_max_minutes is {max, from_turn}.",
+  "cases": [
+    {
+      "id": "mt-essay-vague",
+      "description": "Bare 'I have an essay due'; the student answers over two replies. Coach should ask 1-3 questions, never re-ask the course/question/word count/citations, and plan around sources + the intro freeze.",
+      "depth": "Brief",
+      "deadline_offset_days": 10,
+      "opening": "I have an essay due and I haven't started",
+      "replies": [
+        "It's for HIST1010, 2000 words, the question is 'Was the Cold War inevitable?'",
+        "Chicago footnotes and at least 8 scholarly sources, I have zero so far. Honestly I always freeze when I try to write the intro."
+      ],
+      "fallback_reply": "That's everything I know right now, can you just make the plan?",
+      "questions": [
+        1,
+        3
+      ],
+      "answered": [
+        {
+          "topic": "course/subject",
+          "turn": 1,
+          "ask": "\\b(which|what)\\s+(course|subject|class|unit)\\b"
+        },
+        {
+          "topic": "essay question/topic",
+          "turn": 1,
+          "ask": "\\b(essay (question|prompt|topic)|what('s| is) (the|your) (essay )?(question|prompt|topic)|what (is|'s) (it|the essay) (about|on))\\b"
+        },
+        {
+          "topic": "length",
+          "turn": 1,
+          "ask": "\\b(word (count|limit)|how (long|many words))\\b"
+        },
+        {
+          "topic": "citation style",
+          "turn": 2,
+          "ask": "\\b(citation|referencing) (style|format|system)\\b"
+        },
+        {
+          "topic": "sources so far",
+          "turn": 2,
+          "ask": "\\bhow many sources\\b|\\bsources? (do )?you (have|found|gathered)\\b|\\bany sources\\b"
+        }
+      ],
+      "expected_notes": [
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "chicago",
+              "footnote"
+            ]
+          ],
+          "from_turn": 2
+        },
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "8",
+              "eight"
+            ],
+            [
+              "source"
+            ]
+          ],
+          "from_turn": 2
+        },
+        {
+          "field": "userNotes",
+          "groups": [
+            [
+              "freeze",
+              "stuck",
+              "stall",
+              "struggle",
+              "block"
+            ],
+            [
+              "intro",
+              "start",
+              "first paragraph",
+              "opening"
+            ]
+          ],
+          "from_turn": 2
+        }
+      ],
+      "forbidden_user_notes": [
+        "hist1010",
+        "cold war",
+        "chicago"
+      ],
+      "plan_mentions": [
+        {
+          "groups": [
+            [
+              "source"
+            ]
+          ],
+          "from_turn": 0
+        },
+        {
+          "groups": [
+            [
+              "intro"
+            ]
+          ],
+          "from_turn": 2
+        },
+        {
+          "groups": [
+            [
+              "footnote",
+              "chicago",
+              "citation",
+              "reference"
+            ]
+          ],
+          "from_turn": 2
+        }
+      ]
+    },
+    {
+      "id": "mt-comp2521-spec",
+      "description": "Coding assignment with course/language/deadline in the opening. Coach must not ask which language or when it's due; plan should use Dijkstra/autotests/style from the replies.",
+      "depth": "Deep",
+      "deadline_offset_days": 14,
+      "opening": "COMP2521 assignment 2 - implement a graph-based route planner in C. Due in 2 weeks and I haven't started.",
+      "replies": [
+        "We need Dijkstra for the shortest route and a function that lists every station reachable from a start station. It's marked by autotests plus 20% for style.",
+        "I've read the spec once but haven't written any code. I tend to get stuck setting up Makefiles and test files so I avoid opening the project at all."
+      ],
+      "fallback_reply": "That's all I've got, just make the plan please.",
+      "questions": [
+        1,
+        3
+      ],
+      "answered": [
+        {
+          "topic": "language",
+          "turn": 0,
+          "ask": "\\b(which|what) (programming )?language\\b"
+        },
+        {
+          "topic": "deadline",
+          "turn": 0,
+          "ask": "\\bwhen (is it|is this|is the assignment|'s it) due\\b|\\bwhat('s| is) the deadline\\b"
+        },
+        {
+          "topic": "algorithm/requirements",
+          "turn": 1,
+          "ask": "\\b(which|what) (algorithm|functions?)\\b.*\\b(need|implement|required)\\b"
+        },
+        {
+          "topic": "marking",
+          "turn": 1,
+          "ask": "\\bhow (is it|will it be|are you) (marked|assessed|graded)\\b|\\bmarking (criteria|scheme|rubric)\\b"
+        },
+        {
+          "topic": "progress so far",
+          "turn": 2,
+          "ask": "\\b(have you|did you) (started|written|read)\\b|\\bwhat have you (done|written)\\b"
+        }
+      ],
+      "expected_notes": [
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "dijkstra"
+            ]
+          ],
+          "from_turn": 1
+        },
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "autotest",
+              "style"
+            ]
+          ],
+          "from_turn": 1
+        },
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "read",
+              "spec"
+            ]
+          ],
+          "sections": [
+            "Milestones & Completed Work",
+            "Constraints & Specifications"
+          ],
+          "from_turn": 2
+        },
+        {
+          "field": "userNotes",
+          "groups": [
+            [
+              "setup",
+              "setting up",
+              "makefile",
+              "test files",
+              "tooling",
+              "avoid"
+            ]
+          ],
+          "from_turn": 2
+        }
+      ],
+      "forbidden_user_notes": [
+        "comp2521",
+        "dijkstra",
+        "route planner"
+      ],
+      "plan_mentions": [
+        {
+          "groups": [
+            [
+              "dijkstra"
+            ]
+          ],
+          "from_turn": 1
+        },
+        {
+          "groups": [
+            [
+              "reachable",
+              "station"
+            ]
+          ],
+          "from_turn": 1
+        },
+        {
+          "groups": [
+            [
+              "makefile",
+              "test"
+            ]
+          ],
+          "from_turn": 0
+        },
+        {
+          "groups": [
+            [
+              "style"
+            ]
+          ],
+          "from_turn": 1
+        }
+      ],
+      "plan_forbidden": [
+        "\\bread (through |the )?(whole |entire )?spec\\b(?!.*(again|section|part|q\\d))"
+      ]
+    },
+    {
+      "id": "mt-room-ready",
+      "description": "Simple chore with all details given up front: the coach should build the plan immediately (0 questions).",
+      "depth": "Brief",
+      "deadline_offset_days": 0,
+      "opening": "Clean my room today - there's a huge laundry pile, my desk is covered in papers and I need to vacuum. I've got about an hour before dinner.",
+      "replies": [],
+      "fallback_reply": "Honestly that's it, just make the plan.",
+      "questions": [
+        0,
+        0
+      ],
+      "answered": [
+        {
+          "topic": "what needs cleaning",
+          "turn": 0,
+          "ask": "\\bwhat (needs|do you need|parts?|areas?)\\b.*\\b(clean|tidy)\\b"
+        },
+        {
+          "topic": "time available",
+          "turn": 0,
+          "ask": "\\bhow (much time|long) (do you have|have you got)\\b"
+        }
+      ],
+      "expected_notes": [],
+      "forbidden_user_notes": [
+        "laundry",
+        "vacuum",
+        "desk"
+      ],
+      "plan_mentions": [
+        {
+          "groups": [
+            [
+              "laundry",
+              "clothes"
+            ]
+          ],
+          "from_turn": 0
+        },
+        {
+          "groups": [
+            [
+              "desk",
+              "paper"
+            ]
+          ],
+          "from_turn": 0
+        },
+        {
+          "groups": [
+            [
+              "vacuum"
+            ]
+          ],
+          "from_turn": 0
+        }
+      ]
+    },
+    {
+      "id": "mt-terse-replies",
+      "description": "Vague study ask; the student gives terse, unhelpful replies. A good coach stops interrogating after 1-2 and builds a sensible plan from what it has.",
+      "depth": "Deep",
+      "deadline_offset_days": 6,
+      "opening": "need to study for my exam",
+      "replies": [
+        "MATH1131",
+        "idk, all of it I guess",
+        "not sure honestly"
+      ],
+      "fallback_reply": "I don't know, just give me something to start with.",
+      "questions": [
+        1,
+        2
+      ],
+      "answered": [
+        {
+          "topic": "course",
+          "turn": 1,
+          "ask": "\\b(which|what) (course|subject|exam|class)\\b"
+        }
+      ],
+      "expected_notes": [
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "math1131",
+              "math 1131"
+            ]
+          ],
+          "from_turn": 1
+        }
+      ],
+      "forbidden_user_notes": [
+        "math1131"
+      ],
+      "plan_mentions": [
+        {
+          "groups": [
+            [
+              "past paper",
+              "practice",
+              "problem",
+              "tutorial",
+              "exercise",
+              "question"
+            ]
+          ],
+          "from_turn": 0
+        }
+      ]
+    },
+    {
+      "id": "mt-already-did",
+      "description": "Lab report where the student says the data and graphs are already done. The plan must not redo the graphs, and the extractor must log the finished work.",
+      "depth": "Brief",
+      "deadline_offset_days": 5,
+      "opening": "PHYS1121 lab report due in 5 days",
+      "replies": [
+        "It's the pendulum experiment. I already have the data and did the graphs in Excel last week. Marking is mostly on the error analysis and the discussion.",
+        "Just the writing. Please don't make me redo the graphs."
+      ],
+      "fallback_reply": "That's everything, can you make the plan now?",
+      "questions": [
+        1,
+        2
+      ],
+      "answered": [
+        {
+          "topic": "course",
+          "turn": 0,
+          "ask": "\\b(which|what) (course|subject)\\b"
+        },
+        {
+          "topic": "experiment",
+          "turn": 1,
+          "ask": "\\b(which|what) (experiment|prac|lab)\\b"
+        },
+        {
+          "topic": "data/graphs done",
+          "turn": 1,
+          "ask": "\\b(have you|did you) (collected|got|made|done|finished)\\b.*\\b(data|graphs?|results|plots?)\\b|\\b(data|graphs?) (yet|already)\\b"
+        },
+        {
+          "topic": "marking",
+          "turn": 1,
+          "ask": "\\bhow (is it|will it be) (marked|assessed|graded)\\b|\\bmarking (criteria|rubric|scheme)\\b"
+        }
+      ],
+      "expected_notes": [
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "graph",
+              "data"
+            ]
+          ],
+          "sections": [
+            "Milestones & Completed Work"
+          ],
+          "from_turn": 1
+        },
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "error analysis",
+              "discussion"
+            ]
+          ],
+          "from_turn": 1
+        }
+      ],
+      "forbidden_user_notes": [
+        "phys1121",
+        "pendulum"
+      ],
+      "plan_mentions": [
+        {
+          "groups": [
+            [
+              "error"
+            ]
+          ],
+          "from_turn": 1
+        },
+        {
+          "groups": [
+            [
+              "discussion"
+            ]
+          ],
+          "from_turn": 1
+        }
+      ],
+      "plan_forbidden": [
+        {
+          "regex": "\\b(make|create|plot|draw|redo|re-do|remake|graph)\\s+(the\\s+|new\\s+|your\\s+|all\\s+)?(excel\\s+)?(graphs?|plots?|charts?)\\b",
+          "from_turn": 1
+        },
+        {
+          "regex": "\\b(collect|record|gather|measure)\\s+(the\\s+|new\\s+|more\\s+)?(pendulum\\s+)?(data|measurements|readings)\\b",
+          "from_turn": 1
+        }
+      ]
+    },
+    {
+      "id": "mt-extension-email",
+      "description": "Avoided email to a lecturer: a simple message task. At most one question; the medical certificate must be recorded and used.",
+      "depth": "Brief",
+      "deadline_offset_days": 2,
+      "opening": "I need to email my lecturer about an extension but I keep putting it off",
+      "replies": [
+        "It's for COMM1140, the report is due Friday and I've been sick all week. I have a doctor's certificate."
+      ],
+      "fallback_reply": "That's really all there is to it, just help me get it done.",
+      "questions": [
+        0,
+        1
+      ],
+      "answered": [
+        {
+          "topic": "who to email/what about",
+          "turn": 0,
+          "ask": "\\bwho (are you|do you need to) email\\b|\\bwhat (is|'s) the email about\\b"
+        }
+      ],
+      "expected_notes": [
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "certificate",
+              "medical",
+              "doctor"
+            ]
+          ],
+          "from_turn": 1
+        }
+      ],
+      "forbidden_user_notes": [
+        "comm1140"
+      ],
+      "plan_mentions": [
+        {
+          "groups": [
+            [
+              "email",
+              "send"
+            ]
+          ],
+          "from_turn": 0
+        }
+      ]
+    },
+    {
+      "id": "mt-focus-preference",
+      "description": "The student volunteers a durable preference (15-minute focus span) in reply 2. It must go to userNotes (Preferences/Patterns), and the plan's steps should respect it.",
+      "depth": "Brief",
+      "deadline_offset_days": 8,
+      "opening": "Group presentation for MGMT1001 in 8 days, I'm doing the market analysis slides",
+      "replies": [
+        "4 slides, about 3 minutes of speaking. We're using Google Slides and the group already picked the company (Canva).",
+        "Heads up, I can only really focus for about 15 minutes at a time before I lose it."
+      ],
+      "fallback_reply": "That's everything, go ahead and make the plan.",
+      "questions": [
+        1,
+        3
+      ],
+      "answered": [
+        {
+          "topic": "course",
+          "turn": 0,
+          "ask": "\\b(which|what) (course|subject)\\b"
+        },
+        {
+          "topic": "their part",
+          "turn": 0,
+          "ask": "\\b(which|what) (part|section|slides?) (are you|have you been)\\b"
+        },
+        {
+          "topic": "slide count/length",
+          "turn": 1,
+          "ask": "\\bhow many slides\\b|\\bhow long (is|should) (your|the) (part|section|talk|presentation)\\b"
+        },
+        {
+          "topic": "tool",
+          "turn": 1,
+          "ask": "\\b(which|what) (tool|software|app|platform)\\b"
+        },
+        {
+          "topic": "company",
+          "turn": 1,
+          "ask": "\\b(which|what) company\\b"
+        }
+      ],
+      "expected_notes": [
+        {
+          "field": "userNotes",
+          "groups": [
+            [
+              "15"
+            ],
+            [
+              "focus",
+              "attention",
+              "concentrat"
+            ]
+          ],
+          "sections": [
+            "Preferences",
+            "Patterns & Friction",
+            "About Me"
+          ],
+          "from_turn": 2
+        },
+        {
+          "field": "notes",
+          "groups": [
+            [
+              "4 slides",
+              "four slides",
+              "3 minutes",
+              "three minutes"
+            ]
+          ],
+          "from_turn": 1
+        }
+      ],
+      "forbidden_user_notes": [
+        "mgmt1001",
+        "canva",
+        "google slides"
+      ],
+      "plan_mentions": [
+        {
+          "groups": [
+            [
+              "canva",
+              "market"
+            ]
+          ],
+          "from_turn": 1
+        },
+        {
+          "groups": [
+            [
+              "slide"
+            ]
+          ],
+          "from_turn": 0
+        }
+      ],
+      "plan_max_minutes": {
+        "max": 20,
+        "from_turn": 2
+      }
+    },
+    {
+      "id": "mt-ledger-known",
+      "description": "The project ledger already holds the spec and finished work. The coach must not ask what's in it, must not re-record ledger facts, and must not plan finished work.",
+      "depth": "Deep",
+      "deadline_offset_days": 9,
+      "opening": "COMP1531 iteration 3 is out, can you plan my part?",
+      "context_ledger": "## Constraints & Specifications\n- [2026-10-20] Python 3.10, Flask backend, pytest. Coverage must be >= 90% for the GitLab pipeline.\n- [2026-10-20] I own the user/* routes: user_profile, user_setname, user_setemail.\n- [2026-10-20] Every route needs unit tests and HTTP tests in tests/http/.\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-10-28] Implemented user_profile and its unit + HTTP tests (all passing).\n\n## Plan Adjustments\n",
+      "replies": [
+        "Yep, same routes as before. I'm just dreading writing the HTTP tests, they always take me forever."
+      ],
+      "fallback_reply": "Nothing else changed, please just make the plan.",
+      "questions": [
+        0,
+        2
+      ],
+      "answered": [
+        {
+          "topic": "which routes",
+          "turn": -1,
+          "ask": "\\b(which|what) (routes|endpoints|functions|parts?)\\b.*\\b(you|your)\\b|\\bwhat('s| is) your part\\b"
+        },
+        {
+          "topic": "stack",
+          "turn": -1,
+          "ask": "\\b(which|what) (language|framework|stack)\\b"
+        },
+        {
+          "topic": "coverage/tests required",
+          "turn": -1,
+          "ask": "\\b(coverage|pipeline) (requirement|threshold|target)\\b|\\bwhat (tests|testing) (do you need|is required)\\b"
+        }
+      ],
+      "expected_notes": [],
+      "forbidden_notes": [
+        [
+          [
+            "coverage",
+            "90"
+          ]
+        ],
+        [
+          [
+            "user_profile"
+          ],
+          [
+            "implement",
+            "done",
+            "complete",
+            "finish"
+          ]
+        ]
+      ],
+      "forbidden_user_notes": [
+        "comp1531",
+        "user_setname"
+      ],
+      "plan_mentions": [
+        {
+          "groups": [
+            [
+              "user_setname",
+              "setname"
+            ]
+          ],
+          "from_turn": 0
+        },
+        {
+          "groups": [
+            [
+              "user_setemail",
+              "setemail"
+            ]
+          ],
+          "from_turn": 0
+        },
+        {
+          "groups": [
+            [
+              "http"
+            ]
+          ],
+          "from_turn": 0
+        }
+      ],
+      "plan_forbidden": [
+        "\\b(implement|write|build)\\b.*\\buser_profile\\b"
+      ]
+    }
+  ]
+}

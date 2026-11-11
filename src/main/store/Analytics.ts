@@ -18,7 +18,8 @@ export class Analytics {
    * deadline-sorted list. Date-only daysRemaining math.
    */
   async getUpcomingSubtasks(): Promise<UpcomingSubtask[]> {
-    const projects = this.projects.getProjects()
+    // Archived items drop out; paused ones keep showing steps the user added.
+    const projects = this.projects.getProjects().filter((p) => p.status !== 'archived')
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 

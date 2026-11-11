@@ -7,16 +7,13 @@ import {
   PanelLeftOpen,
   CircleUser
 } from 'lucide-react'
+import type { Workstream } from 'src/common/types'
+import { withWorkstreamDefaults } from 'src/common/workstreams'
 import { Cover, IconButton } from '../ui'
 import type { NavigationProps, View } from './navigation'
 
 const COLLAPSED_KEY = 'focusforge.sidebar.collapsed'
 const NARROW_QUERY = '(max-width: 1099px)'
-
-interface ProjectSummary {
-  id: string
-  name: string
-}
 
 export interface SidebarProps extends Pick<NavigationProps, 'onNavigate'> {
   view: View
@@ -33,7 +30,7 @@ function readCollapsed(): boolean {
 export function Sidebar({ view, onNavigate }: SidebarProps): JSX.Element {
   const [preferredCollapsed, setPreferredCollapsed] = useState(readCollapsed)
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches)
-  const [projects, setProjects] = useState<ProjectSummary[]>([])
+  const [projects, setProjects] = useState<Workstream[]>([])
   const [loadedView, setLoadedView] = useState<View | null>(null)
   const [error, setError] = useState(false)
   const loading = loadedView !== view
@@ -61,9 +58,10 @@ export function Sidebar({ view, onNavigate }: SidebarProps): JSX.Element {
     const refresh = (): void => {
       const version = ++request
       void window.api.getProjects().then(
-        (list: ProjectSummary[]) => {
+        (list: Workstream[]) => {
           if (!cancelled && version === request) {
-            setProjects(list)
+            // Only active items here; paused and archived ones live in Library.
+            setProjects(list.filter((p) => withWorkstreamDefaults(p).status === 'active'))
             setError(false)
             setLoadedView(view)
           }
@@ -144,16 +142,14 @@ export function Sidebar({ view, onNavigate }: SidebarProps): JSX.Element {
       </nav>
 
       <nav
-        aria-label="Projects"
+        aria-label="Items"
         aria-busy={loading}
         className="mt-8 min-h-0 flex-1 overflow-y-auto px-2"
       >
-        <h2 className={collapsed ? 'sr-only' : 'mb-2 px-3 text-xs font-medium text-fg-3'}>
-          Projects
-        </h2>
+        <h2 className={collapsed ? 'sr-only' : 'mb-2 px-3 text-xs font-medium text-fg-3'}>Items</h2>
         {error && !loading && (
           <p role="status" className={collapsed ? 'sr-only' : 'px-3 py-2 text-xs text-fg-3'}>
-            Could not load projects. Open Library to retry.
+            Could not load items. Open Library to retry.
           </p>
         )}
         <div className="space-y-1">

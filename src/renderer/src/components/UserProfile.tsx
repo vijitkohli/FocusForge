@@ -4,6 +4,8 @@ import { parseLedger } from '../lib/ledger'
 import { buildProfile, parseProfile, type ProfileSections } from '../lib/profileSections'
 import { Button, EmptyState, Skeleton, Textarea } from '../ui'
 import { AISettings } from './AISettings'
+import { SourcesSettings } from './SourcesSettings'
+import type { NavigationProps } from '../shell/navigation'
 
 const PROFILE_FIELDS = [
   { section: 'About Me', label: 'About you' },
@@ -19,7 +21,9 @@ function plainText(text: string): string {
     .replace(/^#{1,6}\s+/gm, '')
 }
 
-export function UserProfile(): JSX.Element {
+export function UserProfile({
+  onNavigate
+}: Partial<Pick<NavigationProps, 'onNavigate'>> = {}): JSX.Element {
   const [profile, setProfile] = useState(() => parseProfile(''))
   const [draft, setDraft] = useState<ProfileSections>(profile.sections)
   const [loading, setLoading] = useState(true)
@@ -257,6 +261,11 @@ export function UserProfile(): JSX.Element {
             aiWritePending.current = pending
             setAiPending(pending)
           }}
+        />
+
+        <SourcesSettings
+          disabled={saving || resetting}
+          onReviewItems={onNavigate ? () => onNavigate({ name: 'items' }) : undefined}
         />
 
         <section
