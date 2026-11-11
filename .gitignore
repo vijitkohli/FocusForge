@@ -16,3 +16,6 @@ engine/evals/results
 __pycache__
 # eval write-ups stay local
 engine/evals/*.md
+
+# local-only docs: plans, todos, handoffs, notes
+*.md
