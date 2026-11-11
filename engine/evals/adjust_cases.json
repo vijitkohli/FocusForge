@@ -1,0 +1,728 @@
+{
+  "_comment": "Plan-adjustment (mutation) cases for engine/main.py: a starting checklist (sent as currentChecklist, exactly like the app's update-checklist IPC: messages = [the request only], no stream) plus one request. Item dates are day offsets from the run date ('day'), materialised at run time; 'min' = timeEstimate; 'done' marks finished work (isCompleted + status done + completedAt). expect = what satisfying the request means (scorers.py-style deterministic check in adjust.py). allowed_drops = todo ids the request may remove ('any' for shorten-style requests). id_reuse_ok = ids that may be reused for a reworded step (the step being expanded). prereq_change_ok = the request is about prerequisites. deadline_offset_days is sent as the payload deadline.",
+  "cases": [
+    {
+      "id": "adj-shorter-essay",
+      "description": "'Make it shorter' on a 10-step essay plan with 3 steps done: fewer remaining steps, done steps untouched.",
+      "depth": "Deep",
+      "deadline_offset_days": 9,
+      "request": "this is way too many steps, can you make it shorter?",
+      "checklist": {
+        "originalTask": "HIST1010 essay: Was the Cold War inevitable? (2000 words)",
+        "prerequisites": [],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the essay question and marking rubric",
+            "min": 5,
+            "day": -3,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Find 4 scholarly sources on the origins of the Cold War",
+            "min": 20,
+            "day": -2,
+            "done": true
+          },
+          {
+            "id": "3",
+            "title": "Skim Gaddis chapter 1 and note 3 arguments",
+            "min": 20,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "4",
+            "title": "Find 4 more sources on the Soviet perspective",
+            "min": 20,
+            "day": 0
+          },
+          {
+            "id": "5",
+            "title": "Write a one-sentence thesis",
+            "min": 10,
+            "day": 1
+          },
+          {
+            "id": "6",
+            "title": "Outline 3 body paragraphs with evidence",
+            "min": 20,
+            "day": 2
+          },
+          {
+            "id": "7",
+            "title": "Draft the introduction paragraph",
+            "min": 20,
+            "day": 3
+          },
+          {
+            "id": "8",
+            "title": "Draft body paragraph 1 on the Yalta conference",
+            "min": 20,
+            "day": 4
+          },
+          {
+            "id": "9",
+            "title": "Draft body paragraphs 2 and 3",
+            "min": 20,
+            "day": 5
+          },
+          {
+            "id": "10",
+            "title": "Add Chicago footnotes and proofread",
+            "min": 20,
+            "day": 7
+          }
+        ]
+      },
+      "allowed_drops": "any",
+      "expect": {
+        "type": "shorter"
+      }
+    },
+    {
+      "id": "adj-expand-step3",
+      "description": "'Expand step 3' on a coding plan: the BFS step becomes 2+ smaller steps; everything else untouched.",
+      "depth": "Deep",
+      "deadline_offset_days": 12,
+      "request": "step 3 (the BFS one) is too big, can you break it down into smaller steps?",
+      "checklist": {
+        "originalTask": "COMP2521 assignment 2: graph route planner in C",
+        "prerequisites": [
+          {
+            "id": "p1",
+            "title": "Rewatch the week 7 lecture on BFS",
+            "kind": "learn",
+            "min": 15,
+            "done": true
+          }
+        ],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the spec and read the route planner section",
+            "min": 5,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Write the Graph struct and GraphNew in Graph.c",
+            "min": 20,
+            "day": 0
+          },
+          {
+            "id": "3",
+            "title": "Implement BFS for the shortest route function",
+            "min": 45,
+            "day": 1
+          },
+          {
+            "id": "4",
+            "title": "Write tests for shortest route on the sample map",
+            "min": 20,
+            "day": 2
+          },
+          {
+            "id": "5",
+            "title": "Run the autotests and fix failures",
+            "min": 20,
+            "day": 3
+          },
+          {
+            "id": "6",
+            "title": "Fix style issues and submit with give",
+            "min": 15,
+            "day": 5
+          }
+        ]
+      },
+      "allowed_drops": [
+        "3"
+      ],
+      "id_reuse_ok": [
+        "3"
+      ],
+      "expect": {
+        "type": "expand",
+        "target": "3",
+        "keywords": [
+          "bfs",
+          "queue",
+          "visited",
+          "route",
+          "path",
+          "breadth"
+        ]
+      }
+    },
+    {
+      "id": "adj-already-did",
+      "description": "'I already did X' for a todo step: it must disappear from the remaining plan (the app can't mark it done from a mutation; merge.ts strips status).",
+      "depth": "Brief",
+      "deadline_offset_days": 6,
+      "request": "I already read the week 5 readings on attachment theory last night, so take that off",
+      "checklist": {
+        "originalTask": "PSYC1001 tutorial essay on attachment",
+        "prerequisites": [],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the essay prompt and highlight the key terms",
+            "min": 5,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Read the week 5 readings on attachment theory",
+            "min": 45,
+            "day": 0
+          },
+          {
+            "id": "3",
+            "title": "Write a 5-point outline for the essay",
+            "min": 20,
+            "day": 1
+          },
+          {
+            "id": "4",
+            "title": "Draft the essay (800 words)",
+            "min": 60,
+            "day": 3
+          },
+          {
+            "id": "5",
+            "title": "Proofread and submit on Moodle",
+            "min": 20,
+            "day": 5
+          }
+        ]
+      },
+      "allowed_drops": [
+        "2"
+      ],
+      "expect": {
+        "type": "remove",
+        "targets": [
+          "2"
+        ]
+      }
+    },
+    {
+      "id": "adj-move-after-friday",
+      "description": "'Move everything after Friday': all remaining steps scheduled after the coming Friday (relative to the run date), done steps untouched.",
+      "depth": "Brief",
+      "deadline_offset_days": 18,
+      "request": "I'm away at a hackathon until Friday, push everything I haven't done to after Friday",
+      "checklist": {
+        "originalTask": "MGMT1001 market analysis report",
+        "prerequisites": [],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the report brief and read the marking criteria",
+            "min": 5,
+            "day": -2,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Pick the company and write down 3 competitors",
+            "min": 15,
+            "day": 0
+          },
+          {
+            "id": "3",
+            "title": "Collect market size figures from IBISWorld",
+            "min": 40,
+            "day": 1
+          },
+          {
+            "id": "4",
+            "title": "Draft the SWOT table",
+            "min": 30,
+            "day": 2
+          },
+          {
+            "id": "5",
+            "title": "Write the 1000-word analysis",
+            "min": 60,
+            "day": 4
+          },
+          {
+            "id": "6",
+            "title": "Format references in Harvard style and submit",
+            "min": 30,
+            "day": 6
+          }
+        ]
+      },
+      "allowed_drops": [],
+      "expect": {
+        "type": "dates_after_weekday",
+        "weekday": 4
+      }
+    },
+    {
+      "id": "adj-behind-replan",
+      "description": "'I'm behind, replan from today': remaining steps are overdue; all must move to today..deadline with the first on today.",
+      "depth": "Deep",
+      "deadline_offset_days": 5,
+      "request": "I'm behind, I didn't do anything for the last 4 days. Can you replan the rest starting from today?",
+      "checklist": {
+        "originalTask": "COMP3311 assignment 1: SQL views",
+        "prerequisites": [
+          {
+            "id": "p1",
+            "title": "Install PostgreSQL and load the sample database",
+            "kind": "setup",
+            "min": 15,
+            "done": true
+          }
+        ],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Read Q1-Q3 of the spec",
+            "min": 10,
+            "day": -6,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Write the Q1 view and test it on the sample data",
+            "min": 20,
+            "day": -4
+          },
+          {
+            "id": "3",
+            "title": "Write the Q2 view with a GROUP BY",
+            "min": 20,
+            "day": -3
+          },
+          {
+            "id": "4",
+            "title": "Write the Q3 view using a subquery",
+            "min": 20,
+            "day": -2
+          },
+          {
+            "id": "5",
+            "title": "Write the Q4 PL/pgSQL function",
+            "min": 20,
+            "day": -1
+          },
+          {
+            "id": "6",
+            "title": "Run the check script and fix failing questions",
+            "min": 20,
+            "day": 1
+          },
+          {
+            "id": "7",
+            "title": "Submit ass1.sql with give",
+            "min": 5,
+            "day": 3
+          }
+        ]
+      },
+      "allowed_drops": [],
+      "expect": {
+        "type": "dates_from_today"
+      }
+    },
+    {
+      "id": "adj-add-step",
+      "description": "'Add a step for Y': one new step about emailing the tutor, fresh id, all existing steps kept.",
+      "depth": "Brief",
+      "deadline_offset_days": 7,
+      "request": "can you add a step to email my tutor asking for a 2 day extension?",
+      "checklist": {
+        "originalTask": "CHEM1011 titration lab report",
+        "prerequisites": [],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the lab manual and find the report template",
+            "min": 5,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Calculate the average titre and concentration",
+            "min": 30,
+            "day": 0
+          },
+          {
+            "id": "3",
+            "title": "Write the results section with the data table",
+            "min": 40,
+            "day": 1
+          },
+          {
+            "id": "4",
+            "title": "Write the discussion on sources of error",
+            "min": 45,
+            "day": 3
+          },
+          {
+            "id": "5",
+            "title": "Check formatting and submit on Moodle",
+            "min": 15,
+            "day": 5
+          }
+        ]
+      },
+      "allowed_drops": [],
+      "expect": {
+        "type": "add",
+        "keyword_groups": [
+          [
+            "email",
+            "message",
+            "write to",
+            "contact"
+          ],
+          [
+            "tutor",
+            "demonstrator",
+            "lecturer"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "adj-shorter-keep-prereqs",
+      "description": "'Make it shorter' with prerequisites (one done, one todo): prerequisites must survive the shortening.",
+      "depth": "Deep",
+      "deadline_offset_days": 10,
+      "request": "too much, cut this down to the essentials please",
+      "checklist": {
+        "originalTask": "Portfolio website with React",
+        "prerequisites": [
+          {
+            "id": "p1",
+            "title": "Install Node.js and create a Vite React project",
+            "kind": "setup",
+            "min": 15,
+            "done": true
+          },
+          {
+            "id": "p2",
+            "title": "Watch a 15-minute intro to React Router",
+            "kind": "learn",
+            "min": 15
+          }
+        ],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Write a list of 3 projects to showcase",
+            "min": 5,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Build the navbar component",
+            "min": 20,
+            "day": 0
+          },
+          {
+            "id": "3",
+            "title": "Build the hero section with name and tagline",
+            "min": 20,
+            "day": 1
+          },
+          {
+            "id": "4",
+            "title": "Build the projects grid with 3 cards",
+            "min": 20,
+            "day": 2
+          },
+          {
+            "id": "5",
+            "title": "Add project screenshots to the cards",
+            "min": 15,
+            "day": 3
+          },
+          {
+            "id": "6",
+            "title": "Build the about page",
+            "min": 20,
+            "day": 4
+          },
+          {
+            "id": "7",
+            "title": "Build the contact form",
+            "min": 20,
+            "day": 5
+          },
+          {
+            "id": "8",
+            "title": "Add dark mode toggle",
+            "min": 20,
+            "day": 6
+          },
+          {
+            "id": "9",
+            "title": "Make the layout responsive on mobile",
+            "min": 20,
+            "day": 7
+          },
+          {
+            "id": "10",
+            "title": "Deploy to Vercel",
+            "min": 15,
+            "day": 8
+          },
+          {
+            "id": "11",
+            "title": "Share the link with 2 friends for feedback",
+            "min": 5,
+            "day": 9
+          }
+        ]
+      },
+      "allowed_drops": "any",
+      "expect": {
+        "type": "shorter"
+      }
+    },
+    {
+      "id": "adj-remove-done",
+      "description": "Explicit request to clear finished work: done steps may (should) go; merge.ts allowDropCompleted applies; remaining steps untouched.",
+      "depth": "Brief",
+      "deadline_offset_days": 6,
+      "request": "clear out the finished steps, I don't need to see the done ones anymore",
+      "checklist": {
+        "originalTask": "Atlassian internship application",
+        "prerequisites": [],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the job ad and copy the key requirements",
+            "min": 5,
+            "day": -3,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Update the resume projects section",
+            "min": 40,
+            "day": -2,
+            "done": true
+          },
+          {
+            "id": "3",
+            "title": "Write 3 bullet points for the cover letter",
+            "min": 15,
+            "day": 0
+          },
+          {
+            "id": "4",
+            "title": "Draft the cover letter",
+            "min": 45,
+            "day": 1
+          },
+          {
+            "id": "5",
+            "title": "Ask a friend to proofread the cover letter",
+            "min": 10,
+            "day": 3
+          },
+          {
+            "id": "6",
+            "title": "Submit the application on the careers site",
+            "min": 15,
+            "day": 5
+          }
+        ]
+      },
+      "allowed_drops": [],
+      "expect": {
+        "type": "remove_done"
+      }
+    },
+    {
+      "id": "adj-max-15min",
+      "description": "'Make each step 15 minutes or less': oversized remaining steps get split (not just relabelled), total time roughly preserved. Each split step may keep its id on one of its pieces.",
+      "depth": "Brief",
+      "deadline_offset_days": 8,
+      "request": "I can only focus for 15 minutes at a time, make every step 15 minutes or less",
+      "checklist": {
+        "originalTask": "MATH1231 revision for the eigenvalues quiz",
+        "prerequisites": [],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the week 6 lecture notes on eigenvalues",
+            "min": 5,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Redo tutorial problems 1-6 on eigenvalues",
+            "min": 45,
+            "day": 0
+          },
+          {
+            "id": "3",
+            "title": "Do the 2024 past paper Q3",
+            "min": 30,
+            "day": 2
+          },
+          {
+            "id": "4",
+            "title": "Make a one-page formula sheet",
+            "min": 30,
+            "day": 4
+          },
+          {
+            "id": "5",
+            "title": "Do the 2023 past paper Q2 under timed conditions",
+            "min": 40,
+            "day": 6
+          }
+        ]
+      },
+      "allowed_drops": "any",
+      "expect": {
+        "type": "max_minutes",
+        "max": 15,
+        "min_total_ratio": 0.7
+      },
+      "id_reuse_ok": [
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "id": "adj-reorder",
+      "description": "'Do X before Y': a reorder; the slides step moves before the script step, nothing else changes.",
+      "depth": "Brief",
+      "deadline_offset_days": 8,
+      "request": "I'd rather make the slides before writing the script, can you swap those around?",
+      "checklist": {
+        "originalTask": "MGMT1001 group presentation: market analysis section",
+        "prerequisites": [],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the group's shared doc and find my section",
+            "min": 5,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Collect 3 market statistics with sources",
+            "min": 30,
+            "day": 0
+          },
+          {
+            "id": "3",
+            "title": "Write the 3-minute speaking script",
+            "min": 40,
+            "day": 1
+          },
+          {
+            "id": "4",
+            "title": "Make 4 slides in Google Slides",
+            "min": 45,
+            "day": 3
+          },
+          {
+            "id": "5",
+            "title": "Rehearse the section twice out loud",
+            "min": 15,
+            "day": 6
+          }
+        ]
+      },
+      "allowed_drops": [],
+      "expect": {
+        "type": "order",
+        "before": "4",
+        "after": "3"
+      }
+    },
+    {
+      "id": "adj-drop-prereq",
+      "description": "'I already have X installed': the request is about a prerequisite, so that prerequisite goes; subtasks untouched.",
+      "depth": "Deep",
+      "deadline_offset_days": 9,
+      "request": "I already have Python and pytest set up on my laptop, you can drop that",
+      "checklist": {
+        "originalTask": "COMP1531 iteration 2: channels routes",
+        "prerequisites": [
+          {
+            "id": "p1",
+            "title": "Install Python 3.10 and pytest",
+            "kind": "setup",
+            "min": 15
+          },
+          {
+            "id": "p2",
+            "title": "Read the Flask testing docs page on the test client",
+            "kind": "learn",
+            "min": 15
+          }
+        ],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the iteration 2 spec at the channels section",
+            "min": 5,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Write the channels_list route",
+            "min": 20,
+            "day": 0
+          },
+          {
+            "id": "3",
+            "title": "Write unit tests for channels_list",
+            "min": 20,
+            "day": 1
+          },
+          {
+            "id": "4",
+            "title": "Write the channel_join route",
+            "min": 20,
+            "day": 2
+          },
+          {
+            "id": "5",
+            "title": "Write HTTP tests for channel_join",
+            "min": 20,
+            "day": 4
+          },
+          {
+            "id": "6",
+            "title": "Run coverage and push to GitLab",
+            "min": 15,
+            "day": 6
+          }
+        ]
+      },
+      "allowed_drops": [],
+      "prereq_change_ok": true,
+      "expect": {
+        "type": "remove_prereq",
+        "targets": [
+          "p1"
+        ]
+      }
+    }
+  ]
+}
