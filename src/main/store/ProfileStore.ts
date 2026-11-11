@@ -86,13 +86,16 @@ export class ProfileStore {
     }
 
     const today = Date.now()
-    const overviewLines = this.getProjects().map((p) => {
-      const daysSince = Math.floor(
-        (today - new Date(p.lastActive).getTime()) / (1000 * 60 * 60 * 24)
-      )
-      const idle = daysSince === 0 ? 'active today' : `last active ${daysSince}d ago`
-      return `- ${p.name}: ${p.progress}% done, ${idle}`
-    })
+    // Active and paused items only; archived ones aren't part of the picture.
+    const overviewLines = this.getProjects()
+      .filter((p) => p.status !== 'archived')
+      .map((p) => {
+        const daysSince = Math.floor(
+          (today - new Date(p.lastActive).getTime()) / (1000 * 60 * 60 * 24)
+        )
+        const idle = daysSince === 0 ? 'active today' : `last active ${daysSince}d ago`
+        return `- ${p.name}: ${p.progress}% done, ${idle}`
+      })
     const overviewBlock = `${OVERVIEW_HEADING}\n_(auto-generated)_\n${overviewLines.join('\n')}\n`
 
     const overviewIndex = contents.indexOf(OVERVIEW_HEADING)
