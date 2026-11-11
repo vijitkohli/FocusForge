@@ -284,6 +284,104 @@ describe('getActivityStats', () => {
   })
 })
 
+describe('unplanned tasks (no steps)', () => {
+  it('are ignored by the queue and stats, and count as 0% progress', async () => {
+    seed([
+      {
+        id: 'p',
+        tasks: [
+          { id: 'empty', deadline: '2026-11-30', subtasks: [] },
+          { id: 't', deadline: '2026-11-30', subtasks: [open('a')] }
+        ]
+      }
+    ])
+    expect((await fsm.getUpcomingSubtasks()).map((s) => s.subtaskId)).toEqual(['a'])
+    expect((await fsm.getActivityStats()).totalCompleted).toBe(0)
+    const data = await fsm.loadProjectData('p')
+    await fsm.saveProjectData('p', data!)
+    expect(fsm.getProjects()[0].progress).toBe(0)
+  })
+})
+
+describe('getWeekSummary', () => {
+  it('counts the Monday–Sunday week in local time', async () => {
+    const wed = local(2026, 10, 14, 9)
+    seed([
+      {
+        id: 'p1',
+        name: 'COMP9321',
+        tasks: [
+          {
+            id: 'done-task',
+            deadline: '2026-10-16',
+            subtasks: [
+              { ...completedOn('a', wed), focusSeconds: 600 },
+              completedOn('b', local(2026, 10, 18, 22))
+            ]
+          },
+          {
+            id: 'open-task',
+            deadline: '2026-10-30',
+            subtasks: [
+              completedOn('c', local(2026, 10, 11, 23)),
+              open('late', { scheduledDate: '2026-10-17' }),
+              open('future', { scheduledDate: '2026-10-20' })
+            ]
+          }
+        ]
+      },
+      {
+        id: 'p2',
+        name: 'Other',
+        tasks: [{ id: 't', deadline: '2026-10-30', subtasks: [completedOn('d', wed)] }]
+      }
+    ])
+    const summary = await fsm.getWeekSummary('2026-10-12')
+    expect(summary).toMatchObject({
+      weekStart: '2026-10-12',
+      weekEnd: '2026-10-18',
+      stepsDone: 3,
+      activeDays: 2,
+      tasksFinished: 2,
+      carriedOver: 1,
+      topProject: { name: 'COMP9321', steps: 2 },
+      focusMinutes: 10
+    })
+  })
+})
+
+describe('getEstimateAccuracy', () => {
+  it('uses completed steps with focus time and an estimate', async () => {
+    const done = (id: string, focusSeconds: number, timeEstimate?: number): Subtask => ({
+      ...completedOn(id, local(2026, 10, 10)),
+      focusSeconds,
+      timeEstimate
+    })
+    seed([
+      {
+        id: 'p',
+        tasks: [
+          {
+            id: 't',
+            deadline: '2026-10-20',
+            subtasks: [
+              ...['a', 'b', 'c', 'd', 'e', 'f'].map((id) => done(id, 1200, 10)),
+              done('no-estimate', 1200),
+              open('open', { focusSeconds: 9000, timeEstimate: 10 })
+            ]
+          }
+        ]
+      }
+    ])
+    expect(await fsm.getEstimateAccuracy()).toEqual({ ratio: 2, samples: 6 })
+  })
+
+  it('is null without enough data', async () => {
+    seed([{ id: 'p', tasks: [{ id: 't', deadline: '2026-10-20', subtasks: [] }] }])
+    expect(await fsm.getEstimateAccuracy()).toBeNull()
+  })
+})
+
 describe('getUpcomingSubtasks', () => {
   // new Date('YYYY-MM-DD') is UTC midnight; west of UTC that is the previous
   // local day, so every scheduled step would show one day early.
@@ -484,7 +582,7 @@ describe('appendLedgerNotes', () => {
   const ledgerPath = (id: string): string => path.join(ROOT, id, `context_${id}.md`)
 
   it('inserts notes at the end of their section, before the next heading, in order', async () => {
-    const project = fsm.createProject('COMP 1531')
+    const project = await fsm.createProject('COMP 1531')
     await fsm.appendLedgerNotes(project.id, [
       { section: 'Milestones & Completed Work', note: 'Finished auth routes' },
       { section: 'Constraints & Specifications', note: 'Python 3.10' },
@@ -502,7 +600,7 @@ describe('appendLedgerNotes', () => {
   })
 
   it('appends to the last section at end of file', async () => {
-    const project = fsm.createProject('p')
+    const project = await fsm.createProject('p')
     await fsm.appendLedgerNotes(project.id, [
       { section: 'Plan Adjustments', note: 'Shortened plan' }
     ])
@@ -541,7 +639,7 @@ describe('appendLedgerNotes', () => {
   })
 
   it('readContextLedgerForPrompt keeps only the latest 15 bullets of log sections', async () => {
-    const project = fsm.createProject('p')
+    const project = await fsm.createProject('p')
     await fsm.appendLedgerNotes(
       project.id,
       Array.from({ length: 20 }, (_, i) => ({
@@ -568,7 +666,7 @@ describe('appendLedgerNotes', () => {
   // yesterday's date.
   it('stamps notes with the local date (09:00 Sydney)', async () => {
     vi.setSystemTime(local(2026, 10, 15, 9, 0))
-    const project = fsm.createProject('p')
+    const project = await fsm.createProject('p')
     await fsm.appendLedgerNotes(project.id, [{ section: 'Plan Adjustments', note: 'x' }])
     expect(fs.readFileSync(ledgerPath(project.id), 'utf-8')).toContain('- [2026-10-15] x')
   })

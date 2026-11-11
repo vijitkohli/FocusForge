@@ -1,5 +1,7 @@
 import type { JSX } from 'react'
+import { Square } from 'lucide-react'
 import { Button, Input } from '../../ui'
+import { useSlowSignal } from '../../lib/slowSignal'
 
 interface AdjustPlanProps {
   request: string
@@ -8,6 +10,7 @@ interface AdjustPlanProps {
   adjusting: boolean
   onChange: (request: string) => void
   onAdjust: () => void
+  onStop: () => void
 }
 
 export function AdjustPlan({
@@ -16,8 +19,10 @@ export function AdjustPlan({
   disabled,
   adjusting,
   onChange,
-  onAdjust
+  onAdjust,
+  onStop
 }: AdjustPlanProps): JSX.Element {
+  const slow = useSlowSignal(adjusting, null)
   return (
     <section aria-labelledby="adjust-plan-title" className="space-y-3 border-t border-line pt-6">
       <h2 id="adjust-plan-title" className="section-title">
@@ -39,15 +44,23 @@ export function AdjustPlan({
             placeholder="e.g. make this shorter, split step 3, push everything back a day"
           />
         </div>
-        <Button
-          type="submit"
-          variant="secondary"
-          disabled={disabled || !request.trim()}
-          aria-busy={adjusting}
-        >
-          {adjusting ? 'Adjusting…' : 'Adjust'}
-        </Button>
+        {adjusting ? (
+          <Button variant="secondary" leadingIcon={Square} onClick={onStop}>
+            Stop
+          </Button>
+        ) : (
+          <Button type="submit" variant="secondary" disabled={disabled || !request.trim()}>
+            Adjust
+          </Button>
+        )}
       </form>
+      {adjusting && (
+        <p role="status" className="text-sm text-fg-3">
+          {slow
+            ? 'Adjusting your plan… bigger plans take a little longer.'
+            : 'Adjusting your plan…'}
+        </p>
+      )}
       {message && (
         <p
           role="status"

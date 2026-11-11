@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { AlertCircle, ArrowLeft, LoaderCircle, Paperclip } from 'lucide-react'
+import { AlertCircle, ArrowLeft, LoaderCircle, Paperclip, Square } from 'lucide-react'
 import { DEFAULT_CHAT_MODEL } from 'src/common/models'
 import { localDateKey } from 'src/common/schedule'
 import {
@@ -12,16 +12,21 @@ import type { NavigationProps } from '../shell/navigation'
 import { Button, DateInput, IconButton, SegmentedControl, Skeleton, Textarea } from '../ui'
 import { ChatThread } from '../components/ChatThread'
 import { ModelSelect } from '../components/ModelSelect'
+import { mutateProject } from '../lib/mutateProject'
+import { coachBrief } from 'src/common/outline'
+import { useSlowSignal } from '../lib/slowSignal'
 
 export interface CoachProps extends NavigationProps {
   projectId: string
+  /** Plan this existing unplanned task instead of creating a new one. */
+  planTaskId?: string
 }
 
 export function Coach(props: CoachProps): JSX.Element {
   return <CoachConversation key={props.projectId} {...props} />
 }
 
-function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Element {
+function CoachConversation({ projectId, planTaskId, onOpenProject }: CoachProps): JSX.Element {
   const [name, setName] = useState(projectId.replace(/_/g, ' '))
   const [selectedModel, setSelectedModel] = useState(DEFAULT_CHAT_MODEL)
   const [deadline, setDeadline] = useState(localDateKey(new Date()))
@@ -38,6 +43,7 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null)
   const [attaching, setAttaching] = useState(false)
   const [pendingTask, setPendingTask] = useState<ProjectTask | null>(null)
+  const [planning, setPlanning] = useState<ProjectTask | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const busyRef = useRef(false)
   const modelBusyRef = useRef(false)
@@ -63,6 +69,12 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
           throw new Error("Couldn't load this project. Return to the library or try again.")
         setName(data.name || projectId.replace(/_/g, ' '))
         setSelectedModel(data.lastModel ?? settings.chatModel ?? DEFAULT_CHAT_MODEL)
+        const target = planTaskId ? data.tasks.find((task) => task.id === planTaskId) : undefined
+        if (target) {
+          setPlanning(target)
+          setDeadline(target.deadline)
+          setInputText((current) => current || coachBrief(target))
+        }
         setReady(true)
       })
       .catch((cause: unknown) => {
@@ -77,7 +89,7 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
     return () => {
       cancelled = true
     }
-  }, [projectId, retry])
+  }, [projectId, planTaskId, retry])
 
   useEffect(
     () =>
@@ -108,11 +120,12 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
     setSelectedModel(model)
     setError(null)
     try {
-      const data = await window.api.loadProjectData(projectId)
-      if (!data) throw new Error('Project not found. Return to the library.')
-      const result = await window.api.saveProjectData(projectId, { ...data, lastModel: model })
-      if (!result.success)
-        throw new Error(result.error || "Couldn't remember this model. Select it again to retry.")
+      await mutateProject(
+        projectId,
+        (data) => ({ ...data, lastModel: model }),
+        undefined,
+        "Couldn't remember this model. Select it again to retry."
+      )
     } catch (cause) {
       if (mountedRef.current) {
         setSelectedModel(previous)
@@ -129,20 +142,23 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
   }
 
   const saveTask = async (task: ProjectTask): Promise<void> => {
-    const data = await window.api.loadProjectData(projectId)
-    if (!data) throw new Error('Project not found. Return to the library.')
     // A save can write the file then fail updating the registry. Retrying the same
     // generated task must replace its ID rather than create a duplicate plan.
-    const tasks = data.tasks ?? []
-    const result = await window.api.saveProjectData(projectId, {
-      ...data,
-      lastModel: task.model,
-      tasks: tasks.some((item) => item.id === task.id)
-        ? tasks.map((item) => (item.id === task.id ? task : item))
-        : [...tasks, task]
-    })
-    if (!result.success)
-      throw new Error(result.error || "Couldn't save your plan. Try saving again.")
+    await mutateProject(
+      projectId,
+      (data) => {
+        const tasks = data.tasks ?? []
+        return {
+          ...data,
+          lastModel: task.model,
+          tasks: tasks.some((item) => item.id === task.id)
+            ? tasks.map((item) => (item.id === task.id ? task : item))
+            : [...tasks, task]
+        }
+      },
+      undefined,
+      "Couldn't save your plan. Try saving again."
+    )
     if (mountedRef.current) {
       setPendingTask(null)
       onOpenProject(projectId, task.id)
@@ -184,6 +200,11 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
           model: selectedModel
         })
         if (!mountedRef.current) return
+        if (response.status === 'cancelled') {
+          setMessages(messages)
+          setInputText(originalInput)
+          return
+        }
         if (response.status === 'error') {
           setMessages(messages)
           setInputText(originalInput)
@@ -205,14 +226,16 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
           { role: 'assistant', content: response.message }
         ]
         generatedTask = {
-          id: crypto.randomUUID(),
+          ...(planning ?? {}),
+          id: planning?.id ?? crypto.randomUUID(),
           title:
+            planning?.title ||
             cleanTaskTitle(
               nextMessages.find((message) => message.role === 'user')?.content ?? ''
             ) ||
             cleanTaskTitle(response.data.originalTask) ||
             'Untitled task',
-          createdAt: new Date().toISOString(),
+          createdAt: planning?.createdAt ?? new Date().toISOString(),
           deadline,
           subtasks: (response.data.subtasks ?? []).map((step) => withCompletion(step, false)),
           prerequisites: (response.data.prerequisites ?? []).map((item) =>
@@ -283,6 +306,20 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
   }
 
   const disabled = !ready || loading || attaching || modelSaving
+  const thinking = loading && !pendingTask
+  const slow = useSlowSignal(thinking, streamingText)
+
+  // Esc stops a coach reply in progress (the composer is disabled meanwhile).
+  useEffect(() => {
+    if (!thinking) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey) return
+      event.preventDefault()
+      void window.api.cancelChatTurn()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [thinking])
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-[784px] flex-col px-8">
@@ -295,7 +332,9 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
         >
           {name}
         </Button>
-        <h1 className="text-lg font-bold tracking-[-0.01em]">New task with coach</h1>
+        <h1 className="min-w-0 truncate text-lg font-bold tracking-[-0.01em]">
+          {planning ? `Plan “${planning.title}”` : 'New task with coach'}
+        </h1>
       </header>
       {initializing ? (
         <div role="status" aria-label="Loading coach" className="min-h-0 flex-1 space-y-4 py-6">
@@ -305,8 +344,9 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
       ) : (
         <ChatThread
           messages={messages}
-          loading={loading && !pendingTask}
+          loading={thinking}
           streamingText={streamingText}
+          slow={slow}
           onExampleSelect={
             ready && !pendingTask
               ? (text) => {
@@ -435,15 +475,26 @@ function CoachConversation({ projectId, onOpenProject }: CoachProps): JSX.Elemen
               }}
             />
           </div>
-          <Button
-            type="submit"
-            variant="primary"
-            loading={loading}
-            loadingLabel={pendingTask ? 'Saving plan' : 'Sending message'}
-            disabled={disabled || (!pendingTask && !inputText.trim())}
-          >
-            {pendingTask ? 'Save plan' : 'Send'}
-          </Button>
+          {thinking ? (
+            <Button
+              variant="secondary"
+              leadingIcon={Square}
+              title="Stop (Esc)"
+              onClick={() => void window.api.cancelChatTurn()}
+            >
+              Stop
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              variant="primary"
+              loading={loading}
+              loadingLabel="Saving plan"
+              disabled={disabled || (!pendingTask && !inputText.trim())}
+            >
+              {pendingTask ? 'Save plan' : 'Send'}
+            </Button>
+          )}
         </form>
       </div>
     </div>

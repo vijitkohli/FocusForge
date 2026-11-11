@@ -3,6 +3,7 @@ import { CalendarDays } from 'lucide-react'
 import { localDateKey } from 'src/common/schedule'
 import { MoodFilter, CarriedOver } from '../components/QueueControls'
 import { Momentum } from '../components/Momentum'
+import { WeeklyReviewCard } from '../components/WeeklyReviewCard'
 import { TrackRow } from '../components/TrackRow'
 import { dayLabel } from '../lib/dates'
 import { MOOD_TO_DIFFICULTY, queueKey, queueStore, useQueue } from '../lib/queue'
@@ -28,7 +29,8 @@ export function History({ onOpenProject, onNavigate }: NavigationProps): JSX.Ele
   return (
     <div className="flex w-full flex-col gap-8">
       <h1 className="page-title">History</h1>
-      <Momentum />
+      <WeeklyReviewCard />
+      <Momentum showPace />
       <section>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
           <h2 className="section-title">Coming up</h2>

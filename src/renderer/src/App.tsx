@@ -49,6 +49,8 @@ function App(): JSX.Element {
   }
 
   useEffect(() => window.api.onOpenFocus(globalFocus), [globalFocus])
+  useEffect(() => window.api.onOpenHistory(() => navigate({ name: 'history' })), [navigate])
+  useEffect(() => window.api.onTasksChanged(() => void queueStore.refresh().catch(() => {})), [])
 
   useEffect(() => {
     // Read fresh disk state on navigation, including changes from notification actions.
@@ -113,7 +115,14 @@ function App(): JSX.Element {
       case 'project':
         return <Project key={view.projectId} projectId={view.projectId} {...navigation} />
       case 'coach':
-        return <Coach projectId={view.projectId} {...navigation} />
+        return (
+          <Coach
+            key={`${view.projectId}:${view.planTaskId ?? ''}`}
+            projectId={view.projectId}
+            planTaskId={view.planTaskId}
+            {...navigation}
+          />
+        )
       case 'task':
         return <TaskPage projectId={view.projectId} taskId={view.taskId} {...navigation} />
       case 'now':

@@ -85,8 +85,7 @@ export function Library({ onOpenProject, focusNewProject = false }: LibraryProps
         throw new Error('A project with that name already exists. Choose a different name.')
       }
       const project = await window.api.createProject(trimmed)
-      if (!project?.id || project.success === false)
-        throw new Error(project?.error || "Couldn't create this project. Try again.")
+      if (!project?.id) throw new Error("Couldn't create this project. Try again.")
       setProjects((previous) => [...previous, { ...project, taskCount: 0 }])
       setName('')
       setShowCreate(false)

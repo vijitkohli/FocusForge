@@ -2,6 +2,8 @@ import fs from 'fs-extra'
 import { LedgerNote, LedgerSection, LEDGER_SECTIONS } from '../../common/types'
 import { ledgerPath, legacyLedgerPath, localDateKey } from './paths'
 import { appendUnderHeading, trimSectionBullets } from './markdownSections'
+import { writeFileAtomic } from './atomic'
+import { withLock } from './locks'
 
 export function emptyLedgerContents(): string {
   return LEDGER_SECTIONS.map((section) => `## ${section}\n`).join('\n')
@@ -32,7 +34,7 @@ export class LedgerStore {
           await fs.move(legacy, target)
           return await fs.readFile(target, 'utf-8')
         }
-        await fs.outputFile(target, emptyLedgerContents())
+        await writeFileAtomic(target, emptyLedgerContents())
         return emptyLedgerContents()
       }
       return await fs.readFile(target, 'utf-8')
@@ -52,7 +54,7 @@ export class LedgerStore {
     contents: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      await fs.outputFile(ledgerPath(projectId), contents)
+      await withLock(`ledger:${projectId}`, () => writeFileAtomic(ledgerPath(projectId), contents))
       return { success: true }
     } catch (error) {
       console.error(`Failed to write context ledger for ${projectId}:`, error)
@@ -78,12 +80,14 @@ export class LedgerStore {
    * Appends each note under its section heading. Missing headings (older or
    * malformed ledgers) are created at the end before appending.
    */
-  async appendLedgerNotes(projectId: string, notes: LedgerNote[]): Promise<void> {
-    let contents = await this.readContextLedger(projectId)
-    const timestamp = localDateKey(new Date())
-    for (const { section, note } of notes) {
-      contents = appendUnderHeading(contents, section, `- [${timestamp}] ${note}`)
-    }
-    await fs.outputFile(ledgerPath(projectId), contents)
+  appendLedgerNotes(projectId: string, notes: LedgerNote[]): Promise<void> {
+    return withLock(`ledger:${projectId}`, async () => {
+      let contents = await this.readContextLedger(projectId)
+      const timestamp = localDateKey(new Date())
+      for (const { section, note } of notes) {
+        contents = appendUnderHeading(contents, section, `- [${timestamp}] ${note}`)
+      }
+      await writeFileAtomic(ledgerPath(projectId), contents)
+    })
   }
 }

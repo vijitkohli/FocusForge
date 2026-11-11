@@ -6,11 +6,18 @@ import {
   UserProfileNote
 } from '../common/types'
 import { ProjectSummary } from './store/paths'
+import { EstimateAccuracy } from '../common/estimates'
 import { LedgerStore } from './store/LedgerStore'
 import { ProfileStore } from './store/ProfileStore'
 import { ProjectStore } from './store/ProjectStore'
 import { Analytics } from './store/Analytics'
 import { Nudger } from './store/Nudger'
+import { Backups } from './store/Backups'
+import { TodayStore } from './store/TodayStore'
+import { TodayPlan } from '../common/today'
+import { WeekSummary, WeeklyReview } from '../common/review'
+import { Reviews } from './store/Reviews'
+import { SaveResult, ProjectMutation } from './store/ProjectStore'
 
 /**
  * Thin facade over the FlowState data stores. The IPC layer in index.ts keeps
@@ -24,13 +31,16 @@ import { Nudger } from './store/Nudger'
  */
 export class FileSystemManager {
   private ledger = new LedgerStore()
-  private projects = new ProjectStore(this.ledger)
+  private backups = new Backups()
+  private projects = new ProjectStore(this.ledger, this.backups)
   private profile = new ProfileStore(() => this.projects.getProjects())
   private analytics = new Analytics(this.projects)
   private nudger = new Nudger(this.projects, this.analytics)
+  private today = new TodayStore()
+  private reviews = new Reviews()
 
   // --- Projects / registry / project data ---
-  createProject(projectName: string): ProjectSummary {
+  createProject(projectName: string): Promise<ProjectSummary> {
     return this.projects.createProject(projectName)
   }
   getProjects(): ProjectSummary[] {
@@ -39,15 +49,43 @@ export class FileSystemManager {
   deleteProject(projectId: string): Promise<{ success: boolean; error?: string }> {
     return this.projects.deleteProject(projectId)
   }
-  deleteTask(projectId: string, taskId: string): Promise<{ success: boolean; error?: string }> {
+  deleteTask(projectId: string, taskId: string): Promise<SaveResult> {
     return this.projects.deleteTask(projectId, taskId)
   }
   saveProjectData(
     projectId: string,
     data: ProjectData,
-    notes?: LedgerNote[]
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.projects.saveProjectData(projectId, data, notes)
+    notes?: LedgerNote[],
+    expectedRev?: number
+  ): Promise<SaveResult> {
+    return this.projects.saveProjectData(projectId, data, notes, expectedRev)
+  }
+  updateProjectData(
+    projectId: string,
+    mutate: (data: ProjectData) => Promise<ProjectMutation>
+  ): Promise<SaveResult | null> {
+    return this.projects.updateProjectData(projectId, mutate)
+  }
+  getWeekSummary(weekStart: string): Promise<WeekSummary> {
+    return this.analytics.getWeekSummary(weekStart)
+  }
+  listReviews(): Promise<WeeklyReview[]> {
+    return this.reviews.list()
+  }
+  hasReview(weekStart: string): Promise<boolean> {
+    return this.reviews.has(weekStart)
+  }
+  saveReview(review: WeeklyReview): Promise<void> {
+    return this.reviews.save(review)
+  }
+  getTodayPlan(): Promise<TodayPlan | null> {
+    return this.today.get()
+  }
+  saveTodayPlan(plan: TodayPlan | null): Promise<TodayPlan | null> {
+    return this.today.save(plan)
+  }
+  pruneBackups(): Promise<void> {
+    return this.backups.prune()
   }
   loadProjectData(projectId: string): Promise<ProjectData | null> {
     return this.projects.loadProjectData(projectId)
@@ -93,6 +131,9 @@ export class FileSystemManager {
   }
   getActivityStats(): Promise<ActivityStats> {
     return this.analytics.getActivityStats()
+  }
+  getEstimateAccuracy(): Promise<EstimateAccuracy | null> {
+    return this.analytics.getEstimateAccuracy()
   }
 
   // --- Nudges ---

@@ -46,15 +46,18 @@ export const DEFAULT_PLAN_MODEL = 'cliproxy/gemini-3.8-flash-high'
  * - planModel: optional stronger model for building/adjusting the checklist itself.
  *   '' means "same as chatModel".
  * - aiNudges: let the LLM personalise nudge notification copy (falls back to templates).
+ * - weeklyReview: a kind Sunday summary in History, with a notification.
  */
 export interface AppSettings {
   chatModel: string
   planModel: string
   aiNudges: boolean
+  weeklyReview: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   chatModel: DEFAULT_CHAT_MODEL,
   planModel: DEFAULT_PLAN_MODEL,
-  aiNudges: true
+  aiNudges: true,
+  weeklyReview: true
 }

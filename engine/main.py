@@ -177,6 +177,28 @@ def _user_profile_block(user_profile):
     return f"\n--- USER PROFILE (who you are coaching) ---\n{user_profile}\nAdapt your tone, depth, and examples to this person. Respect their stated preferences and known friction points.\n"
 
 
+def _pace_block(estimate_ratio):
+    """
+    How long this student's steps really take versus their estimates, measured
+    from Focus sessions (median actual/estimate). Only sent once there's enough
+    data and it's meaningfully off 1.0. Estimates should be realistic, but the
+    step-size limits still win: oversized steps get split, not inflated.
+    """
+    try:
+        ratio = float(estimate_ratio)
+    except (TypeError, ValueError):
+        return ""
+    if not (0.5 <= ratio <= 3) or abs(ratio - 1) < 0.15:
+        return ""
+    pace = "longer" if ratio > 1 else "less time"
+    return (
+        f"\n--- STUDENT'S REAL PACE ---\nMeasured from their focus sessions, this student's steps usually take "
+        f"{ratio:.1f}x the estimated time ({pace} than planned). Write timeEstimates for THIS student's pace. "
+        "If that pushes a step past its size limit, SPLIT it into smaller steps instead. The first step's "
+        "5-minute rule still applies.\n"
+    )
+
+
 def _sanitize_notes(raw_notes):
     """
     Keeps only notes whose section matches a known heading, so a
@@ -213,7 +235,7 @@ def _sanitize_user_notes(raw_notes):
     return clean
 
 
-def run_execution_phase(messages, deadline_str, days_remaining, depth, context_ledger, user_profile, model_name):
+def run_execution_phase(messages, deadline_str, days_remaining, depth, context_ledger, user_profile, model_name, estimate_ratio=None):
     """
     Expanded version of the original single-shot decomposition prompt, but
     grounded in the full clarification dialogue and the project's context
@@ -232,6 +254,7 @@ def run_execution_phase(messages, deadline_str, days_remaining, depth, context_l
         "that make the user want to start IMMEDIATELY.\n\n"
 
         f"{profile_block}"
+        f"{_pace_block(estimate_ratio)}"
         f"--- CONTEXT ---\n"
         f"CURRENT DATE: {today_str}\n"
         f"DEADLINE: {deadline_str} ({days_remaining} days remaining)\n"
@@ -338,7 +361,7 @@ def _checklist_for_prompt(checklist):
     }
 
 
-def run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name):
+def run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name, estimate_ratio=None):
     """
     Reshapes an existing checklist on request (e.g. "make this shorter",
     "expand step 3"). Returns a complete replacement subtask list rather
@@ -356,6 +379,7 @@ def run_mutation_phase(messages, current_checklist, context_ledger, user_profile
         "their task and is asking you to adjust it. Apply their request faithfully "
         "while respecting all known project constraints from the context ledger.\n\n"
         f"{profile_block}"
+        f"{_pace_block(estimate_ratio)}"
         f"--- CURRENT CHECKLIST ---\n{checklist_json}\n\n"
         f"{ledger_block}\n"
         f"--- USER'S ADJUSTMENT REQUEST ---\n{latest_request}\n\n"
@@ -408,6 +432,88 @@ def run_mutation_phase(messages, current_checklist, context_ledger, user_profile
     parsed = _parse_json(content)
     summary = parsed.pop("message", "Plan updated.")
     return summary, parsed
+
+
+def run_split_phase(step, task_title, context_ledger, user_profile, model_name, estimate_ratio=None):
+    """
+    "Stuck?" - breaks ONE step the student is stuck on into 2-3 smaller ones.
+    Only that step changes (the main process splices the result in), so the
+    model never sees or touches the rest of the plan.
+    """
+    profile_block = _user_profile_block(user_profile)
+    ledger_block = _ledger_block(context_ledger)
+    title = (step or {}).get("title", "")
+    estimate = (step or {}).get("timeEstimate")
+    estimate_line = f"{estimate} minutes" if isinstance(estimate, int) and estimate > 0 else "unknown"
+    budget = f"{max(5, round(estimate * 1.2))} minutes" if isinstance(estimate, int) and estimate > 0 else "about 30 minutes"
+
+    system_instruction = (
+        "You are a warm, practical study coach. A student is stuck on ONE step of their plan and can't "
+        "start it. Break that step into 2 or 3 smaller steps that together finish it.\n\n"
+        f"{profile_block}"
+        f"{_pace_block(estimate_ratio)}"
+        f"{ledger_block}\n"
+        f"--- THE TASK ---\n{task_title}\n\n"
+        f"--- THE STEP THEY ARE STUCK ON ---\n{title}\n(estimated: {estimate_line})\n\n"
+        "--- RULES ---\n"
+        "1. Return 2 or 3 steps, in the order they should be done. Together they complete the stuck step - "
+        "   nothing more, nothing less.\n"
+        "2. The FIRST step takes 5 minutes or less, needs zero decisions, and is purely physical or "
+        "   mechanical (open, list, copy, find, write one sentence). It must be almost impossible to fail.\n"
+        f"3. The total time of all steps is at most {budget}.\n"
+        "4. Every title is concrete and starts with a specific verb. Never reuse or restate the stuck step's "
+        "   own title, and never use vague verbs like 'work on', 'study' or 'think about'.\n"
+        "5. Do not include anything the context ledger says is already done.\n"
+        "6. `message` is one short, kind sentence to the student (no guilt, no exclamation marks).\n\n"
+        "--- JSON FORMAT ---\n"
+        "Return ONLY a raw JSON object:\n"
+        "{\n"
+        '  "message": "string",\n'
+        '  "steps": [\n'
+        '    { "title": "string", "timeEstimate": integer_minutes, "difficulty": "easy/medium/hard" }\n'
+        "  ]\n"
+        "}"
+    )
+
+    response = _complete(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": "Split the step now."}
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.5,
+        num_retries=1
+    )
+    parsed = _parse_json(response.choices[0].message.content)
+    steps = parsed.get("steps") if isinstance(parsed, dict) else None
+    if not isinstance(steps, list):
+        raise ValueError("no steps in the split reply")
+    return (parsed.get("message") or "").strip(), steps
+
+
+def handle_split(payload):
+    """One-shot entry point for `mode: "split"`."""
+    model_name = payload.get("planModel") or payload.get("model") or DEFAULT_MODEL
+    key_error = _missing_api_key(model_name)
+    if key_error:
+        return {"status": "error", "message": key_error, "steps": []}
+    try:
+        message, steps = run_split_phase(
+            payload.get("step"),
+            payload.get("taskTitle", ""),
+            payload.get("contextLedger"),
+            payload.get("userProfile"),
+            model_name,
+            estimate_ratio=payload.get("estimateRatio")
+        )
+        return {"status": "split", "message": message, "steps": steps}
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Something went wrong on my end ({str(e)}). Could you try that again?",
+            "steps": []
+        }
 
 
 CLARIFY_SENTINEL = "__READY__"
@@ -491,6 +597,115 @@ def extract_turn_notes(messages, deadline_str, days_remaining, context_ledger, u
     return notes, user_notes
 
 
+_CLARIFY_INTRO = (
+    "You are an expert Productivity Coach conducting a short intake conversation "
+    "before breaking a task into a 'No-Fail' execution checklist.\n\n"
+    "Find the single most important missing piece of information (grading criteria, "
+    "required tools, hidden dependencies, scope, or personal friction) and ask ONE "
+    "specific, open-ended question in plain prose.\n\n"
+)
+
+
+def _clarify_context(messages, deadline_str, days_remaining, context_ledger, user_profile):
+    return (
+        f"{_user_profile_block(user_profile)}"
+        f"--- CONTEXT ---\n"
+        f"DEADLINE: {deadline_str} ({days_remaining} days remaining)\n"
+        f"{_ledger_block(context_ledger)}\n"
+        "--- CONVERSATION SO FAR ---\n"
+        f"{_conversation_transcript(messages)}\n"
+    )
+
+
+def _decide_ask(messages, deadline_str, days_remaining, context_ledger, user_profile, model_name):
+    """The careful model's ask-or-plan decision alone: True = ask, False = ready."""
+    system_instruction = (
+        "You decide whether a productivity coach should ask the student one more question before "
+        "building their checklist, or has enough to build a genuinely useful, specific one now.\n\n"
+        f"{CLARIFY_RULES}\n"
+        "Reply with exactly ASK or READY and nothing else.\n\n"
+        + _clarify_context(messages, deadline_str, days_remaining, context_ledger, user_profile)
+    )
+    response = _complete(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": "ASK or READY?"}
+        ],
+        temperature=0.2,
+        num_retries=1
+    )
+    verdict = (response.choices[0].message.content or "").strip().upper()
+    if verdict.startswith("ASK"):
+        return True
+    if verdict.startswith("READY"):
+        return False
+    raise ValueError(f"unclear decision {verdict[:20]!r}")
+
+
+def _draft_question(messages, deadline_str, days_remaining, context_ledger, user_profile, model_name):
+    """The fast model writes the question, assuming one is needed."""
+    system_instruction = (
+        _CLARIFY_INTRO
+        + "A question IS needed. Do not say you are ready and do not build a plan.\n"
+        "Reply with the question only, in plain text - no JSON, no preamble.\n\n"
+        + _clarify_context(messages, deadline_str, days_remaining, context_ledger, user_profile)
+    )
+    response = _complete(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": "Ask your next question."}
+        ],
+        temperature=0.4,
+        num_retries=1
+    )
+    question = (response.choices[0].message.content or "").strip()
+    if not question or CLARIFY_SENTINEL in question:
+        raise ValueError("fast model gave no question")
+    return question
+
+
+def run_clarification_two_model(messages, deadline_str, days_remaining, context_ledger, user_profile,
+                                model_name, fast_model, emit):
+    """
+    EXPERIMENTAL, eval-only (payload `fastModel`; not exposed in the app): the
+    careful model (`model_name`) only decides ask-or-ready while the fast model
+    drafts the question in parallel. Oct 2026 eval vs gemini-3.8-flash-high
+    alone: TTFT 5.4s vs 6.7s, but 5/15 bad skips (vs 0/12), 24% compound
+    questions and quality 4.24 vs 4.91 - the stand-alone decision skips
+    must-ask cases. Kept for tuning; run with --models "A+fast=B".
+    Returns (ready, question) like run_clarification_streaming.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    args = (messages, deadline_str, days_remaining, context_ledger, user_profile)
+    pool = ThreadPoolExecutor(max_workers=2)
+    try:
+        decision = pool.submit(_decide_ask, *args, model_name)
+        draft = pool.submit(_draft_question, *args, fast_model)
+        try:
+            should_ask = decision.result()
+        except Exception as e:
+            print(f"two-model decision failed, falling back: {e}", file=sys.stderr)
+            return run_clarification_streaming(*args, model_name, emit)
+        if not should_ask:
+            return True, CLARIFY_SENTINEL
+        try:
+            question = draft.result()
+        except Exception as e:
+            print(f"fast question failed, falling back: {e}", file=sys.stderr)
+            return run_clarification_streaming(*args, model_name, emit)
+        # Emit in word chunks so the UI shows the same typing as a real stream.
+        words = question.split(" ")
+        for i in range(0, len(words), 4):
+            chunk = " ".join(words[i:i + 4])
+            emit({"type": "token", "text": chunk if i == 0 else " " + chunk})
+        return False, question
+    finally:
+        pool.shutdown(wait=False)
+
+
 def run_clarification_streaming(messages, deadline_str, days_remaining, context_ledger, user_profile, model_name, emit):
     """
     Streaming variant of the clarification pass: streams the next question to
@@ -502,26 +717,13 @@ def run_clarification_streaming(messages, deadline_str, days_remaining, context_
     The streamed reply is plain prose, so per-turn ledger `notes`/`userNotes`
     are extracted separately by extract_turn_notes (run concurrently).
     """
-    transcript = _conversation_transcript(messages)
-    profile_block = _user_profile_block(user_profile)
-    ledger_block = _ledger_block(context_ledger)
-
     system_instruction = (
-        "You are an expert Productivity Coach conducting a short intake conversation "
-        "before breaking a task into a 'No-Fail' execution checklist.\n\n"
-        "Find the single most important missing piece of information (grading criteria, "
-        "required tools, hidden dependencies, scope, or personal friction) and ask ONE "
-        "specific, open-ended question in plain prose.\n\n"
-        f"{CLARIFY_RULES}\n"
+        _CLARIFY_INTRO
+        + f"{CLARIFY_RULES}\n"
         f"If you already have enough to build a genuinely useful, specific checklist, reply "
         f"with EXACTLY this and nothing else: {CLARIFY_SENTINEL}\n\n"
         "Reply with plain text only - no JSON, no preamble.\n\n"
-        f"{profile_block}"
-        f"--- CONTEXT ---\n"
-        f"DEADLINE: {deadline_str} ({days_remaining} days remaining)\n"
-        f"{ledger_block}\n"
-        "--- CONVERSATION SO FAR ---\n"
-        f"{transcript}\n"
+        + _clarify_context(messages, deadline_str, days_remaining, context_ledger, user_profile)
     )
 
     response = _complete(
@@ -612,9 +814,16 @@ def handle_chat_turn_streaming(payload, emit):
 
         turn = _user_turn_count(messages)
         if turn < MAX_CLARIFYING_TURNS and not _user_wants_no_followup(messages):
-            ready, question = run_clarification_streaming(
-                messages, resolved_deadline_str, days_remaining, context_ledger, user_profile, model_name, emit
-            )
+            fast_model = payload.get("fastModel")
+            if fast_model and fast_model != model_name and not _missing_api_key(fast_model):
+                ready, question = run_clarification_two_model(
+                    messages, resolved_deadline_str, days_remaining, context_ledger, user_profile,
+                    model_name, fast_model, emit
+                )
+            else:
+                ready, question = run_clarification_streaming(
+                    messages, resolved_deadline_str, days_remaining, context_ledger, user_profile, model_name, emit
+                )
             if not ready:
                 emit({"type": "result", "status": "clarifying", "message": question, "data": None, "notes": [], "userNotes": []})
                 emit_turn_notes()
@@ -622,7 +831,8 @@ def handle_chat_turn_streaming(payload, emit):
             # ready -> fall through to execution (no tokens for the checklist)
 
         result = run_execution_phase(
-            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, plan_model
+            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, plan_model,
+            estimate_ratio=payload.get("estimateRatio")
         )
         emit({
             "type": "result",
@@ -674,7 +884,10 @@ def handle_chat_turn(payload):
 
     try:
         latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-        summary, new_checklist = run_mutation_phase(messages, current_checklist, context_ledger, user_profile, plan_model)
+        summary, new_checklist = run_mutation_phase(
+            messages, current_checklist, context_ledger, user_profile, plan_model,
+            estimate_ratio=payload.get("estimateRatio")
+        )
         return {
             "status": "updated",
             "message": summary,
@@ -716,7 +929,9 @@ if __name__ == "__main__":
         real_stdout.flush()
 
     try:
-        if payload.get("stream"):
+        if payload.get("mode") == "split":
+            emit(handle_split(payload))
+        elif payload.get("stream"):
             handle_chat_turn_streaming(payload, emit)
         else:
             result = handle_chat_turn(payload)

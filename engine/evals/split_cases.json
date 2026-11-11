@@ -1,0 +1,35 @@
+{
+  "_comment": "Cases for the \"Stuck?\" split mode (engine/main.py mode=split). Each names one step a student is stuck on; scorers check 2-3 parts, a first part of 5 minutes or less, a total within 1.2x the estimate, and no part that restates the step.",
+  "cases": [
+    {
+      "id": "essay-intro",
+      "task": "2000 word essay on the causes of the Cold War",
+      "step": { "title": "Write the introduction paragraph", "timeEstimate": 25 }
+    },
+    {
+      "id": "lit-review-sources",
+      "task": "Honours literature review on sleep and memory",
+      "step": { "title": "Find 5 peer-reviewed sources on sleep and memory consolidation", "timeEstimate": 40 }
+    },
+    {
+      "id": "graph-bfs",
+      "task": "COMP2521 graph assignment",
+      "step": { "title": "Implement BFS for the shortest route function", "timeEstimate": 45 }
+    },
+    {
+      "id": "supervisor-email",
+      "task": "Reply to my supervisor about missing the meeting",
+      "step": { "title": "Write and send the email to my supervisor", "timeEstimate": 15 }
+    },
+    {
+      "id": "exam-past-paper",
+      "task": "Revise for MATH1231 exam",
+      "step": { "title": "Do the 2024 past paper Q3 on eigenvalues", "timeEstimate": 30 }
+    },
+    {
+      "id": "no-estimate",
+      "task": "Clean my room",
+      "step": { "title": "Sort the pile of clothes on the chair" }
+    }
+  ]
+}

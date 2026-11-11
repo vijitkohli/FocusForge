@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { Pencil, Play, Trash2 } from 'lucide-react'
+import { Pencil, Play, Scissors, Trash2 } from 'lucide-react'
 import { deriveStatus, type Subtask } from '../../../../common/types'
 import { Checkbox, DayLabel, DifficultyTag, Input, Menu } from '../../ui'
 
@@ -10,6 +10,7 @@ interface StepRowProps {
   onToggle: (id: string) => void
   onEdit: (id: string, title: string) => void
   onDelete: (id: string) => void
+  onSplit?: (id: string) => void
 }
 
 export function StepRow({
@@ -18,7 +19,8 @@ export function StepRow({
   disabled,
   onToggle,
   onEdit,
-  onDelete
+  onDelete,
+  onSplit
 }: StepRowProps): JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(item.title)
@@ -107,6 +109,16 @@ export function StepRow({
         disabled={disabled}
         items={[
           { id: 'edit', label: 'Edit', icon: Pencil, onSelect: start },
+          ...(onSplit && !item.isCompleted
+            ? [
+                {
+                  id: 'split',
+                  label: 'Break into smaller steps',
+                  icon: Scissors,
+                  onSelect: () => onSplit(item.id)
+                }
+              ]
+            : []),
           {
             id: 'delete',
             label: 'Delete',

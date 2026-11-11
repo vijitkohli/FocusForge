@@ -15,14 +15,23 @@ ENGINE_ERROR_PREFIX = "Something went wrong on my end"
 _JSON_ERROR_HINTS = ("JSONDecodeError", "Expecting value", "Expecting property", "no JSON", "Extra data", "Unterminated string")
 
 
+def split_model(model):
+    """'A+fast=B' runs model A with B drafting questions (the app's fast-question mode)."""
+    if "+fast=" in model:
+        main_model, fast_model = model.split("+fast=", 1)
+        return main_model, fast_model
+    return model, None
+
+
 def build_payload(case, model, mode, today=None):
+    model, fast_model = split_model(model)
     messages = [dict(m) for m in case["messages"]]
     if mode == "execute":
         # Force the checklist: the engine skips clarification when any user
         # message ends with the sentinel (same thing the app's skip button sends).
         last_user = max(i for i, m in enumerate(messages) if m["role"] == "user")
         messages[last_user]["content"] = messages[last_user]["content"].rstrip() + " " + NO_FOLLOWUP_SENTINEL
-    return {
+    payload = {
         "messages": messages,
         "deadline": deadline_for(case, today),
         "depth": case.get("depth", "Brief"),
@@ -31,6 +40,11 @@ def build_payload(case, model, mode, today=None):
         "userProfile": case.get("user_profile") or "",
         "stream": True,
     }
+    if case.get("estimate_ratio") is not None:
+        payload["estimateRatio"] = case["estimate_ratio"]
+    if fast_model:
+        payload["fastModel"] = fast_model
+    return payload
 
 
 # Failures of the proxy/environment rather than of the model: reported
@@ -134,9 +148,10 @@ def run_engine(python, case, model, mode, sample=0):
                 record["tokens"] += 1
             elif obj.get("type") == "result":
                 result = {k: v for k, v in obj.items() if k != "type"}
-            else:
+            elif "type" not in obj:
                 # Non-streaming shape (no "type") - accept it as the result.
                 result = obj
+            # Other typed lines (the trailing {"type": "notes"}) are not the result.
         stderr = proc.stderr.read()
         proc.wait(timeout=30)
     except subprocess.TimeoutExpired:

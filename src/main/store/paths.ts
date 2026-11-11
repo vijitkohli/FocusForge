@@ -11,6 +11,10 @@ export const SYSTEM_DIR = path.join(ROOT_DIR, 'system')
 export const REGISTRY_PATH = path.join(SYSTEM_DIR, 'master_index.json')
 export const NUDGE_LOG_PATH = path.join(SYSTEM_DIR, 'nudges.json')
 export const USER_PROFILE_PATH = path.join(SYSTEM_DIR, 'user_profile.md')
+export const SETTINGS_PATH = path.join(SYSTEM_DIR, 'settings.json')
+export const BACKUP_DIR = path.join(SYSTEM_DIR, 'backups')
+export const TODAY_PLAN_PATH = path.join(SYSTEM_DIR, 'today.json')
+export const REVIEWS_DIR = path.join(SYSTEM_DIR, 'reviews')
 
 /** Absolute path to a project's data file. */
 export function projectDataPath(projectId: string): string {
@@ -27,14 +31,7 @@ export function legacyLedgerPath(projectId: string): string {
   return path.join(ROOT_DIR, projectId, 'context.md')
 }
 
-/** Registry entry: the summarized project record kept in master_index.json. */
-export interface ProjectSummary {
-  id: string
-  name: string
-  path: string
-  progress: number
-  lastActive: string
-}
+export type { ProjectSummary } from '../../common/types'
 
 /** Local-time 'YYYY-MM-DD' for a date (so day-bucketing matches the user's calendar). */
 export function localDateKey(d: Date): string {

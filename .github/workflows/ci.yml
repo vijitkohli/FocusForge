@@ -30,3 +30,8 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Unit tests mock electron and pin TZ to Australia/Sydney (vitest.config.ts).
+      # src/main/engine.test.ts spawns stub scripts with the runner's python3.
+      - name: Test
+        run: npm test

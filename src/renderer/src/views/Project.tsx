@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useState, type JSX } from 'react'
-import { AlertCircle, ArrowLeft, ListMusic, NotebookText, Plus, Trash2 } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowLeft,
+  FileText,
+  ListMusic,
+  MessageSquare,
+  NotebookText,
+  Plus,
+  Trash2
+} from 'lucide-react'
 import { localDateKey } from 'src/common/schedule'
 import type { ProjectData, ProjectTask } from 'src/common/types'
+import { isUnplanned } from 'src/common/outline'
 import { formatLocalDate } from '../lib/dates'
 import { queueStore } from '../lib/queue'
 import type { NavigationProps } from '../shell/navigation'
 import { Button, Cover, EmptyState, Menu, Skeleton } from '../ui'
 import { ProjectNotesDrawer } from '../components/ProjectNotesDrawer'
+import { OutlineImportDrawer } from '../components/OutlineImportDrawer'
 
 export interface ProjectProps extends NavigationProps {
   projectId: string
@@ -23,6 +34,8 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const [retry, setRetry] = useState(0)
 
   useEffect(() => {
@@ -159,12 +172,20 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
                     <Button variant="primary" leadingIcon={Plus} onClick={openCoach}>
                       New task with coach
                     </Button>
+                    <Button leadingIcon={FileText} onClick={() => setImportOpen(true)}>
+                      Import course outline
+                    </Button>
                     <Button leadingIcon={NotebookText} onClick={() => setNotesOpen(true)}>
                       Project notes
                     </Button>
                   </div>
                 </div>
               </header>
+              {notice && (
+                <p role="status" className="text-sm text-fg-2">
+                  {notice}
+                </p>
+              )}
               {tasks.length === 0 ? (
                 <EmptyState
                   icon={ListMusic}
@@ -201,9 +222,13 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
                             <span className="truncate text-[15px] leading-[1.35] font-[550]">
                               {task.title}
                             </span>
-                            <span className="text-[12.5px] tabular-nums text-fg-2">
-                              {steps.filter((step) => step.isCompleted).length} / {steps.length}
-                            </span>
+                            {isUnplanned(task) ? (
+                              <span className="text-[12.5px] text-fg-3">Not planned</span>
+                            ) : (
+                              <span className="text-[12.5px] tabular-nums text-fg-2">
+                                {steps.filter((step) => step.isCompleted).length} / {steps.length}
+                              </span>
+                            )}
                             <span className="text-[12.5px] text-fg-2">
                               {formatLocalDate(task.deadline) || 'No deadline'}
                             </span>
@@ -212,6 +237,21 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
                             label={`Options for ${task.title}`}
                             disabled={!!deleting}
                             items={[
+                              ...(isUnplanned(task)
+                                ? [
+                                    {
+                                      id: 'plan',
+                                      label: 'Plan with coach',
+                                      icon: MessageSquare,
+                                      onSelect: () =>
+                                        onNavigate({
+                                          name: 'coach',
+                                          projectId,
+                                          planTaskId: task.id
+                                        })
+                                    }
+                                  ]
+                                : []),
                               {
                                 id: 'delete',
                                 label: 'Delete task',
@@ -235,6 +275,20 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
         projectId={projectId}
         open={notesOpen}
         onClose={() => setNotesOpen(false)}
+      />
+      <OutlineImportDrawer
+        projectId={projectId}
+        open={importOpen}
+        tasks={data?.tasks ?? []}
+        onClose={() => setImportOpen(false)}
+        onImported={(added) => {
+          setNotice(
+            added === 0
+              ? 'Those assessments are already tasks here.'
+              : `Added ${added} ${added === 1 ? 'task' : 'tasks'}. Plan each one with the coach when you're ready.`
+          )
+          setRetry((value) => value + 1)
+        }}
       />
     </div>
   )

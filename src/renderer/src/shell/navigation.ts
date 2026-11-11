@@ -6,7 +6,8 @@ export type View =
   | { name: 'now' }
   | { name: 'library' }
   | { name: 'project'; projectId: string }
-  | { name: 'coach'; projectId: string }
+  // planTaskId: plan an existing unplanned task (e.g. imported from a course outline)
+  | { name: 'coach'; projectId: string; planTaskId?: string }
   | { name: 'task'; projectId: string; taskId: string }
   | { name: 'history' }
   | { name: 'profile' }

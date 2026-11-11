@@ -3,11 +3,14 @@ import { Flame } from 'lucide-react'
 import type { ActivityStats } from '../../../common/types'
 import { localDateKey } from '../../../common/schedule'
 import { formatLocalDate } from '../lib/dates'
+import { paceSentence } from '../lib/pace'
 import { useQueue } from '../lib/queue'
 import { Button, Skeleton } from '../ui'
 
 export interface MomentumProps {
   weeks?: number
+  /** Show how long steps take versus their estimates (History only). */
+  showPace?: boolean
 }
 
 const MIN_WEEKS = 12
@@ -78,7 +81,7 @@ function cellClass(count: number): string {
   return 'bg-accent'
 }
 
-export function Momentum({ weeks }: MomentumProps = {}): JSX.Element {
+export function Momentum({ weeks, showPace = false }: MomentumProps = {}): JSX.Element {
   const { all } = useQueue()
   const headingId = useId()
   const viewport = useRef<HTMLDivElement>(null)
@@ -86,6 +89,7 @@ export function Momentum({ weeks }: MomentumProps = {}): JSX.Element {
   const [stats, setStats] = useState<ActivityStats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const [pace, setPace] = useState<string | null>(null)
   // The streak number ticks up (one short motion) only when it grows in place;
   // tracked as state adjusted during render, React's pattern for prop changes.
   const streak = stats?.currentStreak ?? null
@@ -122,6 +126,20 @@ export function Momentum({ weeks }: MomentumProps = {}): JSX.Element {
       cancelled = true
     }
   }, [all, attempt])
+
+  useEffect(() => {
+    if (!showPace) return
+    let cancelled = false
+    window.api.getEstimateAccuracy().then(
+      (accuracy) => {
+        if (!cancelled) setPace(paceSentence(accuracy))
+      },
+      () => undefined
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [all, showPace])
 
   const count = visibleWeeks(width, weeks)
   const cell = weeks === undefined ? cellSize(width, count) : CELL
@@ -190,6 +208,8 @@ export function Momentum({ weeks }: MomentumProps = {}): JSX.Element {
           </>
         ) : null}
       </div>
+
+      {showPace && pace && <p className="mt-2 text-sm text-fg-2">{pace}</p>}
 
       {error && (
         <div className="mt-3 flex flex-wrap items-center gap-3">

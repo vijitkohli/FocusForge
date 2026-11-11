@@ -2,6 +2,8 @@ import fs from 'fs-extra'
 import { NUDGE_LOG_PATH, localDateKey } from './paths'
 import { ProjectStore } from './ProjectStore'
 import { Analytics } from './Analytics'
+import { writeJsonAtomic } from './atomic'
+import { withLock } from './locks'
 
 // How stale a project must be (days since lastActive) before it's nudge-worthy.
 const NUDGE_IDLE_DAYS = 2
@@ -26,7 +28,16 @@ export class Nudger {
     private analytics: Analytics
   ) {}
 
-  async getNudge(): Promise<{
+  getNudge(): Promise<{
+    title: string
+    body: string
+    subject: string
+    reason: 'overdue' | 'idle'
+  } | null> {
+    return withLock('nudges', () => this.pickNudge())
+  }
+
+  private async pickNudge(): Promise<{
     title: string
     body: string
     subject: string
@@ -76,7 +87,7 @@ export class Nudger {
 
     log[pick.key] = todayKey
     try {
-      await fs.outputJSON(NUDGE_LOG_PATH, log)
+      await writeJsonAtomic(NUDGE_LOG_PATH, log)
     } catch (e) {
       console.error('Failed to write nudge log', e)
     }

@@ -132,6 +132,18 @@ export function AISettings({ disabled = false, onPendingChange }: AISettingsProp
                 unavailable.
               </p>
             </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Checkbox
+                label="Weekly review"
+                checked={settings.weeklyReview}
+                onChange={(event) => void update({ weeklyReview: event.target.checked })}
+                disabled={busy || failedPatch !== null}
+                aria-describedby={`${id}-review-description`}
+              />
+              <p id={`${id}-review-description`} className="text-[12.5px] leading-[1.55] text-fg-3">
+                A short, kind look back at your week every Sunday evening, shown in History.
+              </p>
+            </div>
           </fieldset>
           {saveError && failedPatch && (
             <div role="alert" className="space-y-3 rounded-md bg-bg-2 p-4">
