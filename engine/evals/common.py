@@ -32,7 +32,12 @@ DEFAULT_MODELS = [
 # Opus would be the more neutral judge (not a graded model), but its proxy quota
 # runs out mid-suite; pass --judge-model cliproxy/claude-opus-4-6-thinking to use it.
 DEFAULT_JUDGE = "cliproxy/gemini-3.8-flash-high"
-MODES = ("clarify", "execute")
+MODES = ("clarify", "execute", "multiturn", "adjust")
+# multiturn/adjust cases live in their own files (multiturn_cases.json,
+# adjust_cases.json); clarify/execute share cases.json.
+BASE_MODES = ("clarify", "execute")
+# Used by run.py when the primary judge keeps returning 429 (quota).
+DEFAULT_JUDGE_FALLBACK = "cliproxy/claude-sonnet-4-6"
 
 
 def load_env():
@@ -65,6 +70,12 @@ def raw_path(model, case_id, mode, sample=0):
 
 def judge_path(judge_model, model, case_id, mode, sample=0):
     return os.path.join(JUDGE_DIR, slug(judge_model), slug(model), f"{case_id}.{mode}.{sample}.json")
+
+
+def raw_fingerprint(record):
+    """Identifies one engine run so a cached judge verdict can be matched to the
+    exact output it graded (re-running the engine overwrites the raw file)."""
+    return f"{record.get('run_date')}|{record.get('latency_s')}|{record.get('tokens')}"
 
 
 def read_json(path):
