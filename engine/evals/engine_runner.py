@@ -50,7 +50,9 @@ def build_payload(case, model, mode, today=None):
 # Failures of the proxy/environment rather than of the model: reported
 # separately (not counted against a model's error rate) and re-runnable with
 # --retry-errors.
-INFRA_ERRORS = {"rate_limited", "timeout", "no_result_line", "engine_misconfigured", "spawn_failed"}
+INFRA_ERRORS = {"rate_limited", "timeout", "no_result_line", "engine_misconfigured", "spawn_failed", "proxy_unavailable"}
+# The proxy has no working upstream login (e.g. an OAuth token refresh failed).
+_PROXY_DOWN_HINTS = ("auth_unavailable", "no auth available", "ServiceUnavailableError")
 
 
 def classify_error(result):
@@ -60,8 +62,12 @@ def classify_error(result):
     status = result.get("status")
     message = result.get("message") or ""
     if status == "error":
+        if any(h in message for h in _PROXY_DOWN_HINTS):
+            return "proxy_unavailable"
         return "engine_error"
     if status == "clarifying" and message.startswith(ENGINE_ERROR_PREFIX):
+        if any(h in message for h in _PROXY_DOWN_HINTS):
+            return "proxy_unavailable"
         if "RateLimitError" in message or "429" in message or "quota" in message.lower():
             return "rate_limited"
         if "LLM Provider NOT provided" in message:
@@ -84,6 +90,89 @@ def effective_error(record):
     return err
 
 
+def invoke_engine(python, payload):
+    """
+    Runs engine/main.py once with `payload` on stdin and reads its NDJSON
+    stdout exactly like the app does. Returns a dict with the result line,
+    any trailing {"type": "notes"} lines, token count, TTFT, latency, stderr
+    tail, unparseable lines, and timeout/exit info. Never raises for engine
+    failures (spawn errors come back as error="spawn_failed").
+    """
+    out = {"result": None, "notes_lines": [], "tokens": 0, "ttft_s": None, "latency_s": None,
+           "stderr_tail": "", "bad_lines": [], "timed_out": False, "returncode": None, "spawn_error": None}
+    start = time.monotonic()
+    try:
+        proc = subprocess.Popen(
+            [python, ENGINE_MAIN],
+            cwd=ENGINE_DIR,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as e:
+        out["spawn_error"] = str(e)
+        return out
+
+    # stdin is small; write it, then read stdout line-by-line so we can time
+    # the first streamed token like the UI would see it.
+    try:
+        proc.stdin.write(json.dumps(payload))
+        proc.stdin.close()
+    except BrokenPipeError:
+        pass
+
+    stderr = ""
+    try:
+        for line in proc.stdout:
+            if time.monotonic() - start > ENGINE_TIMEOUT_S:
+                out["timed_out"] = True
+                proc.kill()
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                out["bad_lines"].append(line[:300])
+                continue
+            if obj.get("type") == "token":
+                if out["ttft_s"] is None:
+                    out["ttft_s"] = round(time.monotonic() - start, 3)
+                out["tokens"] += 1
+            elif obj.get("type") == "result":
+                out["result"] = {k: v for k, v in obj.items() if k != "type"}
+            elif obj.get("type") == "notes":
+                out["notes_lines"].append({"notes": obj.get("notes") or [], "userNotes": obj.get("userNotes") or []})
+            elif "type" not in obj:
+                # Non-streaming shape (no "type") - accept it as the result.
+                out["result"] = obj
+        stderr = proc.stderr.read()
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out["timed_out"] = True
+
+    out["latency_s"] = round(time.monotonic() - start, 3)
+    out["stderr_tail"] = (stderr or "")[-1500:]
+    out["returncode"] = proc.returncode
+    return out
+
+
+def invocation_error(inv):
+    """Error kind for one invoke_engine() outcome, or None (same rules as run_engine)."""
+    if inv.get("spawn_error"):
+        return "spawn_failed"
+    if inv["timed_out"]:
+        return "timeout"
+    if inv["bad_lines"]:
+        return "invalid_ndjson"
+    if inv["returncode"] not in (0, None) and inv["result"] is None:
+        return f"nonzero_exit_{inv['returncode']}"
+    return classify_error(inv["result"])
+
+
 def run_engine(python, case, model, mode, sample=0):
     today = date.today()
     payload = build_payload(case, model, mode, today)
@@ -102,74 +191,15 @@ def run_engine(python, case, model, mode, sample=0):
         "stderr_tail": "",
         "bad_lines": [],
     }
-
-    start = time.monotonic()
-    try:
-        proc = subprocess.Popen(
-            [python, ENGINE_MAIN],
-            cwd=ENGINE_DIR,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-    except OSError as e:
+    inv = invoke_engine(python, payload)
+    if inv.get("spawn_error"):
         record["error"] = "spawn_failed"
-        record["stderr_tail"] = str(e)
+        record["stderr_tail"] = inv["spawn_error"]
         return record
-
-    # stdin is small; write it, then read stdout line-by-line so we can time
-    # the first streamed token like the UI would see it.
-    try:
-        proc.stdin.write(json.dumps(payload))
-        proc.stdin.close()
-    except BrokenPipeError:
-        pass
-
-    result = None
-    timed_out = False
-    try:
-        for line in proc.stdout:
-            if time.monotonic() - start > ENGINE_TIMEOUT_S:
-                timed_out = True
-                proc.kill()
-                break
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                record["bad_lines"].append(line[:300])
-                continue
-            if obj.get("type") == "token":
-                if record["ttft_s"] is None:
-                    record["ttft_s"] = round(time.monotonic() - start, 3)
-                record["tokens"] += 1
-            elif obj.get("type") == "result":
-                result = {k: v for k, v in obj.items() if k != "type"}
-            elif "type" not in obj:
-                # Non-streaming shape (no "type") - accept it as the result.
-                result = obj
-            # Other typed lines (the trailing {"type": "notes"}) are not the result.
-        stderr = proc.stderr.read()
-        proc.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        stderr = ""
-        timed_out = True
-
-    record["latency_s"] = round(time.monotonic() - start, 3)
-    record["stderr_tail"] = (stderr or "")[-1500:]
-    record["result"] = result
-    if timed_out:
-        record["error"] = "timeout"
-    elif record["bad_lines"]:
-        record["error"] = "invalid_ndjson"
-    elif proc.returncode not in (0, None) and result is None:
-        record["error"] = f"nonzero_exit_{proc.returncode}"
-    else:
-        record["error"] = classify_error(result)
-        if record["error"] is None and mode == "execute" and result.get("status") != "complete":
-            record["error"] = "unexpected_status"
+    for k in ("tokens", "ttft_s", "latency_s", "stderr_tail", "bad_lines", "result"):
+        record[k] = inv[k]
+    record["error"] = invocation_error(inv)
+    result = inv["result"]
+    if record["error"] is None and mode == "execute" and result.get("status") != "complete":
+        record["error"] = "unexpected_status"
     return record
