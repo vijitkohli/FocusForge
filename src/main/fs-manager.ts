@@ -3,9 +3,11 @@ import {
   LedgerNote,
   ProjectData,
   UpcomingSubtask,
-  UserProfileNote
+  UserProfileNote,
+  ProjectSummary,
+  Workstream,
+  WorkstreamPatch
 } from '../common/types'
-import { ProjectSummary } from './store/paths'
 import { EstimateAccuracy } from '../common/estimates'
 import { LedgerStore } from './store/LedgerStore'
 import { ProfileStore } from './store/ProfileStore'
@@ -17,7 +19,12 @@ import { TodayStore } from './store/TodayStore'
 import { TodayPlan } from '../common/today'
 import { WeekSummary, WeeklyReview } from '../common/review'
 import { Reviews } from './store/Reviews'
-import { SaveResult, ProjectMutation } from './store/ProjectStore'
+import {
+  SaveResult,
+  ProjectMutation,
+  WorkstreamOp,
+  ApplyWorkstreamsResult
+} from './store/ProjectStore'
 
 /**
  * Thin facade over the FlowState data stores. The IPC layer in index.ts keeps
@@ -40,11 +47,23 @@ export class FileSystemManager {
   private reviews = new Reviews()
 
   // --- Projects / registry / project data ---
-  createProject(projectName: string): Promise<ProjectSummary> {
-    return this.projects.createProject(projectName)
+  createProject(projectName: string, fields?: WorkstreamPatch): Promise<Workstream> {
+    return this.projects.createProject(projectName, fields)
   }
-  getProjects(): ProjectSummary[] {
+  getProjects(): Workstream[] {
     return this.projects.getProjects()
+  }
+  getRegistryEntries(): ProjectSummary[] {
+    return this.projects.getRegistryEntries()
+  }
+  updateWorkstream(
+    projectId: string,
+    patch: WorkstreamPatch
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.projects.updateWorkstream(projectId, patch)
+  }
+  applyWorkstreams(ops: WorkstreamOp[]): Promise<ApplyWorkstreamsResult> {
+    return this.projects.applyWorkstreams(ops)
   }
   deleteProject(projectId: string): Promise<{ success: boolean; error?: string }> {
     return this.projects.deleteProject(projectId)
