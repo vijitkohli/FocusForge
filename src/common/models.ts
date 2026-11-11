@@ -2,6 +2,7 @@
 // Single list of selectable LLMs, shared by the workspace dropdown and the
 // settings page. Values are LiteLLM model strings understood by engine/main.py
 // ("cliproxy/*" routes through the local CLIProxyAPI server).
+import { DEFAULT_INITIAL_ACTIVE, type ItemCategory } from './workstreams'
 
 export interface ModelOption {
   value: string
@@ -40,6 +41,12 @@ export const MODEL_GROUPS: ModelGroup[] = [
 export const DEFAULT_CHAT_MODEL = 'cliproxy/gemini-3.8-flash-high'
 export const DEFAULT_PLAN_MODEL = 'cliproxy/gemini-3.8-flash-high'
 
+/** A folder FocusForge may read, with the category its subfolders start in. `~` is kept unexpanded. */
+export interface SourceRoot {
+  path: string
+  category: Exclude<ItemCategory, 'Life'>
+}
+
 /**
  * Persisted app settings (system/settings.json).
  * - chatModel: drives the intake conversation (and everything, unless planModel is set).
@@ -47,17 +54,44 @@ export const DEFAULT_PLAN_MODEL = 'cliproxy/gemini-3.8-flash-high'
  *   '' means "same as chatModel".
  * - aiNudges: let the LLM personalise nudge notification copy (falls back to templates).
  * - weeklyReview: a kind Sunday summary in History, with a notification.
+ * - vaultPath: the Obsidian vault FocusForge reads ('' = auto-detect from obsidian.json).
+ *   Set only by main (folder picker / first save), never by a renderer patch.
+ * - sourceRoots: folders discovery reads. No UI edits them (that would widen
+ *   access past the owner's data rules); main strips them from renderer patches.
+ * - vaultCategories: top-level vault folders scanned for items. `Life` is
+ *   always stripped on load.
+ * - initialActiveKeys: match keys of the items that start checked and active
+ *   on the approval screen (first-run slice).
+ * - discoveryCompletedAt / discoveryDismissedAt: first-run approval state (ISO).
  */
 export interface AppSettings {
   chatModel: string
   planModel: string
   aiNudges: boolean
   weeklyReview: boolean
+  vaultPath: string
+  sourceRoots: SourceRoot[]
+  vaultCategories: string[]
+  initialActiveKeys: string[]
+  discoveryCompletedAt: string | null
+  discoveryDismissedAt: string | null
 }
+
+export const DEFAULT_SOURCE_ROOTS: SourceRoot[] = [
+  { path: '~/UNI', category: 'Learning' },
+  { path: '~/Projects', category: 'Projects' }
+]
+export const DEFAULT_VAULT_CATEGORIES = ['Learning', 'Projects', 'Career']
 
 export const DEFAULT_SETTINGS: AppSettings = {
   chatModel: DEFAULT_CHAT_MODEL,
   planModel: DEFAULT_PLAN_MODEL,
   aiNudges: true,
-  weeklyReview: true
+  weeklyReview: true,
+  vaultPath: '',
+  sourceRoots: DEFAULT_SOURCE_ROOTS,
+  vaultCategories: DEFAULT_VAULT_CATEGORIES,
+  initialActiveKeys: [...DEFAULT_INITIAL_ACTIVE],
+  discoveryCompletedAt: null,
+  discoveryDismissedAt: null
 }
