@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import { NowPlaying } from './views/NowPlaying'
 import { Library } from './views/Library'
+import { Items } from './views/Items'
 import { Project } from './views/Project'
 import { Coach } from './views/Coach'
 import { History } from './views/History'
@@ -15,10 +16,13 @@ import type { FocusScope, NavigationProps, View } from './shell/navigation'
 function App(): JSX.Element {
   const [view, setView] = useState<View>({ name: 'now' })
   const previousPage = useRef<View>({ name: 'now' })
+  // Re-entering the approval screen always runs a fresh discovery.
+  const [itemsRun, setItemsRun] = useState(0)
 
   const navigate = useCallback(
     (next: View): void => {
       if (next.name === 'focus' && view.name !== 'focus') previousPage.current = view
+      if (next.name === 'items') setItemsRun((n) => n + 1)
       setView(next)
     },
     [view]
@@ -47,6 +51,26 @@ function App(): JSX.Element {
     onOpenProject: openProject,
     onOpenFocus: openFocus
   }
+
+  // First run: until items are approved (or "Not now"), open the approval screen.
+  useEffect(() => {
+    let cancelled = false
+    void window.api.getSettings().then(
+      (settings) => {
+        if (
+          !cancelled &&
+          settings.discoveryCompletedAt == null &&
+          settings.discoveryDismissedAt == null
+        ) {
+          setView((current) => (current.name === 'now' ? { name: 'items' } : current))
+        }
+      },
+      () => {}
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => window.api.onOpenFocus(globalFocus), [globalFocus])
   useEffect(() => window.api.onOpenHistory(() => navigate({ name: 'history' })), [navigate])
@@ -111,7 +135,9 @@ function App(): JSX.Element {
   function renderPage(): JSX.Element {
     switch (view.name) {
       case 'profile':
-        return <UserProfile />
+        return <UserProfile onNavigate={navigate} />
+      case 'items':
+        return <Items key={itemsRun} onNavigate={navigate} />
       case 'project':
         return <Project key={view.projectId} projectId={view.projectId} {...navigation} />
       case 'coach':
