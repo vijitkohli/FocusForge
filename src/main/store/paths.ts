@@ -15,6 +15,7 @@ export const SETTINGS_PATH = path.join(SYSTEM_DIR, 'settings.json')
 export const BACKUP_DIR = path.join(SYSTEM_DIR, 'backups')
 export const TODAY_PLAN_PATH = path.join(SYSTEM_DIR, 'today.json')
 export const REVIEWS_DIR = path.join(SYSTEM_DIR, 'reviews')
+export const DISCOVERY_PATH = path.join(SYSTEM_DIR, 'discovery.json')
 
 /** Absolute path to a project's data file. */
 export function projectDataPath(projectId: string): string {

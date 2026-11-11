@@ -9,6 +9,7 @@ const tails = new Map<string, Promise<void>>()
  *   profile       user_profile.md
  *   settings      settings.json
  *   nudges        nudges.json
+ *   discovery     discovery.json (item suggestions cache)
  * Never take an outer key while holding an inner one, and never re-enter a key.
  */
 export function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
