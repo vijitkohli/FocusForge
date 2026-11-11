@@ -1,6 +1,7 @@
 // src/common/types.ts
 import type { AssessmentInfo } from './outline'
 import type { Recurrence } from './recurrence'
+import type { ItemCategory } from './workstreams'
 
 export type SubtaskStatus = 'todo' | 'doing' | 'done'
 
@@ -253,14 +254,39 @@ export interface SplitStepResult {
   created?: Subtask[]
 }
 
-/** Registry entry: the summarized project record kept in master_index.json. */
+export type WorkstreamKind = 'deadline' | 'passion' | 'ongoing'
+export type WorkstreamStatus = 'active' | 'paused' | 'archived'
+
+/**
+ * Registry entry: the summarized project record kept in master_index.json.
+ * The item ("workstream") fields are optional on disk; readers get them
+ * filled by withWorkstreamDefaults (src/common/workstreams.ts).
+ */
 export interface ProjectSummary {
   id: string
   name: string
   path: string
   progress: number
   lastActive: string
+  category?: ItemCategory
+  kind?: WorkstreamKind
+  status?: WorkstreamStatus
+  /** Absolute folder/note paths or `<note>.md#<heading>` refs; each passed the guard when saved. */
+  sources?: string[]
+  /** Vault-relative note path (Phase 4). */
+  vaultNote?: string
+  /** ISO; newest change seen in the sources. */
+  sourceActivityAt?: string
 }
+
+/** A registry entry with the item fields filled in. */
+export type Workstream = ProjectSummary &
+  Required<Pick<ProjectSummary, 'category' | 'kind' | 'status' | 'sources'>>
+
+/** The item fields main-side writers may change. */
+export type WorkstreamPatch = Partial<
+  Pick<ProjectSummary, 'name' | 'category' | 'kind' | 'status' | 'sources'>
+>
 
 /** Result of a project save; `conflict` means reload and re-apply the change. */
 export interface SaveResult {
