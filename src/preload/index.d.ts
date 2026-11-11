@@ -9,11 +9,19 @@ import {
   Prerequisite,
   UpcomingSubtask,
   ActivityStats,
-  ProjectSummary,
   SaveResult,
+  Workstream,
+  WorkstreamPatch,
   SplitStepResult
 } from '../common/types'
 import { AppSettings } from '../common/models'
+import {
+  ApplyDiscoveryRequest,
+  ApplyDiscoveryResult,
+  DiscoveryCandidate,
+  DiscoveryResult,
+  VaultInfo
+} from '../common/discovery'
 import { EstimateAccuracy } from '../common/estimates'
 import { OutlineAssessment, OutlineReadResult } from '../common/outline'
 import { TodayPlan } from '../common/today'
@@ -57,8 +65,22 @@ declare global {
         prerequisites?: Prerequisite[]
       }>
 
-      getProjects: () => Promise<ProjectSummary[]>
-      createProject: (name: string) => Promise<ProjectSummary>
+      getProjects: () => Promise<Workstream[]>
+      createProject: (name: string, fields?: WorkstreamPatch) => Promise<Workstream>
+
+      discoverWorkstreams: () => Promise<DiscoveryResult>
+      cancelDiscovery: () => Promise<void>
+      getLastDiscovery: () => Promise<DiscoveryResult | null>
+      addSourceViaDialog: () => Promise<
+        { candidate: DiscoveryCandidate } | { error: string } | null
+      >
+      applyDiscovery: (req: ApplyDiscoveryRequest) => Promise<ApplyDiscoveryResult>
+      updateWorkstream: (
+        id: string,
+        patch: WorkstreamPatch
+      ) => Promise<{ success: boolean; error?: string }>
+      getVaultInfo: () => Promise<VaultInfo>
+      chooseVaultFolder: () => Promise<{ vault: VaultInfo } | { error: string } | null>
 
       saveProjectData: (
         projectId: string,

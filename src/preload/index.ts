@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { ChatTurnPayload, DecompositionResult, LedgerNote, ProjectData } from '../common/types'
+import {
+  ChatTurnPayload,
+  DecompositionResult,
+  LedgerNote,
+  ProjectData,
+  WorkstreamPatch
+} from '../common/types'
+import type { ApplyDiscoveryRequest } from '../common/discovery'
 import { AppSettings } from '../common/models'
 import type { OutlineAssessment } from '../common/outline'
 import type { TodayPlan } from '../common/today'
@@ -72,7 +79,27 @@ const api = {
 
   getProjects: () => ipcRenderer.invoke('get-projects'),
 
-  createProject: (name: string) => ipcRenderer.invoke('create-project', name),
+  // `fields` (optional): item category/kind/status/sources for the new project
+  createProject: (name: string, fields?: WorkstreamPatch) =>
+    ipcRenderer.invoke('create-project', name, fields),
+
+  // --- Items: discovery and approval (names and dates only; main re-checks every path)
+  // Looks through the source folders and vault; one run per window at a time
+  discoverWorkstreams: () => ipcRenderer.invoke('discover-workstreams'),
+  // Stops a running discovery; it resolves with what was found so far
+  cancelDiscovery: () => ipcRenderer.invoke('cancel-discovery'),
+  // The last stored result (null before the first run)
+  getLastDiscovery: () => ipcRenderer.invoke('get-last-discovery'),
+  // "Add a folder or note": native picker, then one suggestion (null if cancelled)
+  addSourceViaDialog: () => ipcRenderer.invoke('add-source-via-dialog'),
+  // Saves the approved items and hidden suggestions
+  applyDiscovery: (req: ApplyDiscoveryRequest) => ipcRenderer.invoke('apply-discovery', req),
+  // Changes an item's name, category, kind, status or sources
+  updateWorkstream: (id: string, patch: WorkstreamPatch) =>
+    ipcRenderer.invoke('update-workstream', id, patch),
+  getVaultInfo: () => ipcRenderer.invoke('get-vault-info'),
+  // Folder picker for the Obsidian vault (null if cancelled)
+  chooseVaultFolder: () => ipcRenderer.invoke('choose-vault-folder'),
 
   // `expectedRev` (the rev you loaded) makes the save fail with `conflict: true`
   // instead of overwriting a write that landed in between.
