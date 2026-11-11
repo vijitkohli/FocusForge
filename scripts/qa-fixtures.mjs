@@ -97,7 +97,7 @@ export function cleanFixtures() {
   fs.rmSync(ITEMS, { recursive: true, force: true })
 }
 
-/** Path, size and mtime of everything under home except the closed Life folder. */
+/** Path, size and mtime of everything in the fake UNI, Projects and vault except the closed Life folder. */
 export function snapshotHome() {
   const out = []
   const life = path.join(VAULT, 'Life')
@@ -112,7 +112,8 @@ export function snapshotHome() {
       if (e.isDirectory() && !e.isSymbolicLink()) walk(p)
     }
   }
-  walk(HOME)
+  // Only what the app reads; HOME also receives tool caches (e.g. Python's) at runtime.
+  for (const top of ['UNI', 'Projects', 'Vault']) walk(path.join(HOME, top))
   return out
 }
 
@@ -148,7 +149,7 @@ export function buildFixtures() {
   gitRepo(path.join(uni, 'thesis-experiments'), 3, { 'run.py': 'print(1)\n' })
   write(path.join(uni, 'comp2511/notes.md'), 'old notes\n')
   ageTree(path.join(uni, 'comp2511'), 200)
-  write(path.join(uni, 'GITLAB PAT.rtf'), SECRET_CANARY)
+  write(path.join(uni, 'API TOKEN.rtf'), SECRET_CANARY)
   fs.symlinkSync(path.join(VAULT, 'Life'), path.join(uni, 'comp9321/linked-life'))
 
   // ---- ~/Projects (Projects)
