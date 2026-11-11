@@ -348,6 +348,22 @@ describe('discover', () => {
     expect(r.dismissed.map((c) => c.key)).toEqual([key])
   })
 
+  it('matches vault notes when the vault path goes through a symlink', async () => {
+    const link = path.join(tmp, 'linked-vault')
+    if (!fs.existsSync(link)) fs.symlinkSync(vault, link)
+    const guard = new PathGuard({
+      sourceRoots: [uni, projects],
+      vaultRoots: [link],
+      readableVault: link,
+      caseInsensitive: true
+    })
+    const r = await discover(
+      options({ guard, vault: { path: link, source: 'settings', valid: true, others: [] } })
+    )
+    expect(labels(byName(r, 'Thesis'))).toContain('Thesis Hub/')
+    expect(labels(byName(r, 'FocusForge'))).toContain('IDEAS TO DO.md › FocusForge')
+  })
+
   it('skips vault FocusForge folder', async () => {
     const r = await discover(options({ vaultCategories: ['FocusForge', 'Learning'] }))
     expect(

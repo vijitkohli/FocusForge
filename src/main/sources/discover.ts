@@ -249,7 +249,11 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
         guard.walk(dir, { maxDepth: 3, maxEntries: 4000, deadline: runDeadline, signal })
       )
       if (walked.truncated) truncated = true
-      const rel = (e: WalkEntry): string[] => path.relative(dir, e.path).split(path.sep)
+      // Walk entries carry real paths; compare against the real folder too, or
+      // a vault reached through a symlink would make every note look nested.
+      const dirCheck = guard.check(dir)
+      const baseDir = dirCheck.ok ? dirCheck.real : dir
+      const rel = (e: WalkEntry): string[] => path.relative(baseDir, e.path).split(path.sep)
       const newestMdUnder = (folderPath: string): number | null =>
         maxOrNull(
           ...walked.entries
