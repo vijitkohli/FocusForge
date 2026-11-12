@@ -199,6 +199,8 @@ export function buildFixtures() {
     JSON.stringify(
       {
         vaultPath: VAULT,
+        // Vault notes are covered by qa-vault.mjs; keep the writer off here.
+        vaultNotes: false,
         sourceRoots: [
           { path: uni, category: 'Learning' },
           { path: projects, category: 'Projects' }
@@ -206,7 +208,11 @@ export function buildFixtures() {
         vaultCategories: ['Learning', 'Projects', 'Career'],
         initialActiveKeys: SLICE,
         discoveryCompletedAt: null,
-        discoveryDismissedAt: null
+        discoveryDismissedAt: null,
+        // This QA covers discovery only: keep the Phase 3 readers off so the
+        // "only hub notes are read" check stays meaningful (qa-readers.mjs
+        // covers what the readers read).
+        readersEnabled: false
       },
       null,
       2
