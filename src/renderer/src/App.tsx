@@ -9,6 +9,7 @@ import { TaskPage } from './views/task/TaskPage'
 import { FocusMode } from './components/FocusMode'
 import { UserProfile } from './components/UserProfile'
 import { queueStore } from './lib/queue'
+import { whatNextStore } from './lib/whatNextStore'
 import { MiniPlayer } from './shell/MiniPlayer'
 import { Sidebar } from './shell/Sidebar'
 import type { FocusScope, NavigationProps, View } from './shell/navigation'
@@ -75,6 +76,7 @@ function App(): JSX.Element {
   useEffect(() => window.api.onOpenFocus(globalFocus), [globalFocus])
   useEffect(() => window.api.onOpenHistory(() => navigate({ name: 'history' })), [navigate])
   useEffect(() => window.api.onTasksChanged(() => void queueStore.refresh().catch(() => {})), [])
+  useEffect(() => whatNextStore.start(), [])
 
   useEffect(() => {
     // Read fresh disk state on navigation, including changes from notification actions.

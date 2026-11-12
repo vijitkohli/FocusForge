@@ -308,7 +308,10 @@ export function Items({ onNavigate }: Pick<NavigationProps, 'onNavigate'>): JSX.
           id={headingId}
           ref={index === 0 ? headingRef : undefined}
           tabIndex={-1}
-          className="text-lg font-bold tracking-[-0.01em] text-fg-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="text-lg font-bold tracking-[-0.01em] text-fg-1"
+          // Focus lands here after loading (tabIndex -1, not a tab stop); the
+          // global unlayered :focus-visible ring would otherwise frame it.
+          style={{ outline: 'none' }}
         >
           {group.category} · {group.activeCount} active
         </h2>

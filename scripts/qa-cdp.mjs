@@ -123,7 +123,9 @@ export async function connectCdp({ port, mainPort, output, log = () => '' }) {
   }
 
   async function key(k, code = k, modifiers = 0) {
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers })
+    // Enter needs its text for native behaviour such as implicit form submission.
+    const text = k === 'Enter' && !modifiers ? { text: '\r' } : {}
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers, ...text })
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, modifiers })
     await sleep(80)
   }

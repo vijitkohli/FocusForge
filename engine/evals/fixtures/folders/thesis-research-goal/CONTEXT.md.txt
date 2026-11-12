@@ -1,0 +1,20 @@
+# Thesis experiments (synthetic)
+
+## What this is
+Experiments for an honours thesis on guarding LLM agents against unsafe tool calls. Code lives in this repo.
+
+## Current state
+- `run_pilot.py` runs the pilot benchmark (5 tasks); 3 tasks pass, 2 crash on tool timeouts.
+- `guard/policy.py` holds the rule-based guard; `guard/scorer.py` scores each episode.
+- `analysis/plot_results.ipynb` makes the comparison plots (only covers the pilot).
+
+## Next steps
+1. Fix the tool-timeout crash in `run_pilot.py` (add a retry around `call_tool`).
+2. Re-run the pilot with all 5 tasks.
+3. Add the 3 new hard tasks to `tasks/hard/` and run them.
+4. Write up pilot results for the supervisor meeting.
+
+## Open questions
+- Which second benchmark to use (supervisor suggested two benchmarks total).
+
+Last updated: {{d-2}}

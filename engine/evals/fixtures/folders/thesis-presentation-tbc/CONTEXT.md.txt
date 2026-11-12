@@ -1,0 +1,15 @@
+# Thesis A (synthetic)
+
+## Current state
+- Thesis A seminar presentation is in Week 11, exact slot TBC (slots get posted on the course site).
+- Proposal draft v4 written; supervisor feedback received on v4 (mostly about scoping the evaluation).
+- Pilot experiment results: 3 of 5 tasks run (see `results/pilot.md`, not in this folder).
+- No slides yet.
+
+## Next steps
+1. Confirm the presentation slot.
+2. Make a slide outline from the proposal.
+
+## Deadlines
+- [ ] Thesis A presentation, Week 11 (date TBC)
+- [ ] Proposal v5 to supervisor [due:: {{d+9}}]

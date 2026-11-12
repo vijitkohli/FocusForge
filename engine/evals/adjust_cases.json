@@ -159,7 +159,7 @@
     },
     {
       "id": "adj-already-did",
-      "description": "'I already did X' for a todo step: it must disappear from the remaining plan (the app can't mark it done from a mutation; merge.ts strips status).",
+      "description": "'I already did X, take that off' for a todo step: it must leave the remaining plan. Since Phase 5 the reply may instead list it in completedIds, which the merge marks done (with completedAt), so the work still counts.",
       "depth": "Brief",
       "deadline_offset_days": 6,
       "request": "I already read the week 5 readings on attachment theory last night, so take that off",
@@ -207,6 +207,66 @@
         "type": "remove",
         "targets": [
           "2"
+        ]
+      }
+    },
+    {
+      "id": "adj-already-did-mark",
+      "description": "'I already did X' with no removal request: the step must come back marked DONE via completedIds (merge stamps completedAt so it counts toward the streak), not silently deleted. Other steps untouched.",
+      "depth": "Brief",
+      "deadline_offset_days": 8,
+      "request": "oh I actually already wrote the outline yesterday",
+      "checklist": {
+        "originalTask": "ECON1101 policy essay",
+        "prerequisites": [],
+        "subtasks": [
+          {
+            "id": "1",
+            "title": "Open the essay question and underline the key terms",
+            "min": 5,
+            "day": -2,
+            "done": true
+          },
+          {
+            "id": "2",
+            "title": "Collect 4 sources on minimum wage policy",
+            "min": 40,
+            "day": -1,
+            "done": true
+          },
+          {
+            "id": "3",
+            "title": "Write a 5-point outline for the essay",
+            "min": 20,
+            "day": 0
+          },
+          {
+            "id": "4",
+            "title": "Draft the introduction and first body paragraph",
+            "min": 45,
+            "day": 2
+          },
+          {
+            "id": "5",
+            "title": "Draft the remaining body paragraphs",
+            "min": 60,
+            "day": 4
+          },
+          {
+            "id": "6",
+            "title": "Proofread, format references and submit",
+            "min": 30,
+            "day": 7
+          }
+        ]
+      },
+      "allowed_drops": [
+        "3"
+      ],
+      "expect": {
+        "type": "mark_done",
+        "targets": [
+          "3"
         ]
       }
     },

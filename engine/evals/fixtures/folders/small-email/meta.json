@@ -1,0 +1,12 @@
+{
+  "label": "career",
+  "item": {
+    "id": "career",
+    "name": "Career",
+    "category": "Career",
+    "kind": "ongoing"
+  },
+  "modified": {
+    "CONTEXT.md": -1
+  }
+}

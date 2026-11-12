@@ -1,0 +1,10 @@
+# MATH1951 Linear Algebra and Calculus (synthetic)
+
+## Current state
+- Final exam (50%) in 12 days. Two hours, closed book, one double-sided A4 formula sheet allowed.
+- Weak topics: eigenvalues, Taylor series. OK: vectors, matrices, limits.
+- Have past papers 2022, 2023, 2024 (with worked solutions for 2023 only).
+- Haven't started revising.
+
+## Deadlines
+- [ ] Final exam [due:: {{d+12}}]

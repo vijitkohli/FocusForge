@@ -1,0 +1,5 @@
+# Thesis A presentation requirements
+- 12 minutes talk + 5 minutes questions, in front of two assessors.
+- Must cover: problem and motivation, related work (brief), proposed approach, preliminary results, plan for Thesis B with a timeline.
+- Slides submitted as PDF by 9am on the day.
+- Assessed on clarity, understanding of the area, feasibility of the plan, handling questions.

@@ -1,0 +1,6 @@
+PSYC1777 Research Report marking rubric
+- Introduction and literature (25%): logical argument leading to a clear hypothesis; integrates at least 6 sources.
+- Method (15%): replicable detail.
+- Results (20%): correct APA reporting of t, df, p, d; figure formatted in APA style with caption.
+- Discussion (25%): links back to hypothesis and literature; two or more specific limitations.
+- Writing and APA formatting (15%): clarity, citations, reference list.

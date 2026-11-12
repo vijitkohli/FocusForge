@@ -14,6 +14,7 @@ import { ChatThread } from '../components/ChatThread'
 import { ModelSelect } from '../components/ModelSelect'
 import { mutateProject } from '../lib/mutateProject'
 import { coachBrief } from 'src/common/outline'
+import { planToTask } from 'src/common/milestones'
 import { useSlowSignal } from '../lib/slowSignal'
 
 export interface CoachProps extends NavigationProps {
@@ -225,27 +226,48 @@ function CoachConversation({ projectId, planTaskId, onOpenProject }: CoachProps)
           ...nextMessages,
           { role: 'assistant', content: response.message }
         ]
-        generatedTask = {
-          ...(planning ?? {}),
-          id: planning?.id ?? crypto.randomUUID(),
-          title:
-            planning?.title ||
-            cleanTaskTitle(
-              nextMessages.find((message) => message.role === 'user')?.content ?? ''
-            ) ||
-            cleanTaskTitle(response.data.originalTask) ||
-            'Untitled task',
-          createdAt: planning?.createdAt ?? new Date().toISOString(),
-          deadline,
-          subtasks: (response.data.subtasks ?? []).map((step) => withCompletion(step, false)),
-          prerequisites: (response.data.prerequisites ?? []).map((item) =>
-            withCompletion(item, false)
-          ),
-          status: 'in-progress',
-          depth,
-          model: selectedModel,
-          conversation
-        }
+        const title =
+          planning?.title ||
+          cleanTaskTitle(nextMessages.find((message) => message.role === 'user')?.content ?? '') ||
+          cleanTaskTitle(response.data.originalTask) ||
+          'Untitled task'
+        // Two-level reply (Coach twoLevel flag): milestones for the whole job.
+        generatedTask = response.data.milestones?.length
+          ? planToTask(
+              {
+                ...(planning ?? {}),
+                id: planning?.id ?? crypto.randomUUID(),
+                title,
+                createdAt: planning?.createdAt ?? new Date().toISOString(),
+                deadline,
+                depth,
+                model: selectedModel,
+                conversation
+              },
+              response.data,
+              () => crypto.randomUUID()
+            )
+          : {
+              ...(planning ?? {}),
+              id: planning?.id ?? crypto.randomUUID(),
+              title:
+                planning?.title ||
+                cleanTaskTitle(
+                  nextMessages.find((message) => message.role === 'user')?.content ?? ''
+                ) ||
+                cleanTaskTitle(response.data.originalTask) ||
+                'Untitled task',
+              createdAt: planning?.createdAt ?? new Date().toISOString(),
+              deadline,
+              subtasks: (response.data.subtasks ?? []).map((step) => withCompletion(step, false)),
+              prerequisites: (response.data.prerequisites ?? []).map((item) =>
+                withCompletion(item, false)
+              ),
+              status: 'in-progress',
+              depth,
+              model: selectedModel,
+              conversation
+            }
         setPendingTask(generatedTask)
         setStreamingText('')
       }

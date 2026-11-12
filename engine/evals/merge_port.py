@@ -101,9 +101,12 @@ def merge_checklist(previous, incoming, allow_drop_completed=False):
     def valid(items):
         return [x for x in (items or []) if isinstance(x, dict) and normalize_title(x.get("title"))]
 
+    # "I already did X": open items the reply lists in completedIds are marked done.
+    done_ids = {str(i) for i in incoming.get("completedIds") or []}
     in_subs = valid(incoming.get("subtasks"))
     matches, claimed = _pair(prev_subs, in_subs)
     merged = []
+    completed = []
     for item, idx in zip(in_subs, matches):
         fields = {k: v for k, v in item.items() if k not in ("isCompleted", "completedAt", "status")}
         if idx is not None:
@@ -112,6 +115,10 @@ def merge_checklist(previous, incoming, allow_drop_completed=False):
             status = derive_status(old)
             if status == "done":
                 merged.append({**old, "status": "done", "isCompleted": True, "_origin": idx})
+            elif str(old.get("id")) in done_ids:
+                item_done = {**old, "status": "done", "isCompleted": True, "_origin": idx}
+                merged.append(item_done)
+                completed.append(item_done)
             else:
                 merged.append({**old, **fields, "id": old.get("id"), "status": status,
                                "isCompleted": False, "_origin": idx})
@@ -121,6 +128,11 @@ def merge_checklist(previous, incoming, allow_drop_completed=False):
     restored_subs = [] if allow_drop_completed else [
         {**s, "_origin": i} for i, s in enumerate(prev_subs) if i not in claimed and derive_status(s) == "done"
     ]
+    # Marked done but dropped from the reply: keep it, done (the work happened).
+    dropped_done = [{**s, "status": "done", "isCompleted": True, "_origin": i} for i, s in enumerate(prev_subs)
+                    if i not in claimed and derive_status(s) != "done" and str(s.get("id")) in done_ids]
+    completed += dropped_done
+    restored_subs = restored_subs + dropped_done
 
     in_pres = valid(incoming.get("prerequisites"))
     pmatches, pclaimed = _pair(prev_pres, in_pres)
@@ -132,6 +144,8 @@ def merge_checklist(previous, incoming, allow_drop_completed=False):
             assigned.add(str(old.get("id")))
             if old.get("isCompleted"):
                 merged_pres.append({**old, "_origin": idx})
+            elif str(old.get("id")) in done_ids:
+                merged_pres.append({**old, "isCompleted": True, "_origin": idx})
             else:
                 merged_pres.append({**old, **fields, "id": old.get("id"), "isCompleted": False, "_origin": idx})
         else:
@@ -143,6 +157,7 @@ def merge_checklist(previous, incoming, allow_drop_completed=False):
     return {
         "subtasks": restored_subs + merged,
         "prerequisites": restored_pres + merged_pres,
-        "restoredSubtasks": restored_subs,
+        "restoredSubtasks": [s for s in restored_subs if s not in dropped_done],
         "restoredPrerequisites": restored_pres,
+        "completedSubtasks": completed,
     }

@@ -1,0 +1,32 @@
+{
+  "goal": "Land a 2027 graduate role.",
+  "currentState": "### Where things stand\nReferral offered after a coffee chat; needs an email with CV and job link.",
+  "openItems": [
+    {
+      "text": "Email Priya CV and job link",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "career/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Referral email to Priya",
+      "date": "{{d+1}}",
+      "confidence": "confirmed",
+      "kind": "other",
+      "sources": [
+        {
+          "label": "career/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [],
+  "candidateTasks": [],
+  "constraints": [],
+  "suggestedKind": "ongoing"
+}

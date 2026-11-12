@@ -1,0 +1,33 @@
+{
+  "goal": "Write the PSYC1777 Stroop research report (1500 words, APA 7, 25%).",
+  "currentState": "### Where things stand\n2 of 6 sources found. Stats output available. Nothing written.",
+  "openItems": [
+    {
+      "text": "Find 4 more peer-reviewed sources",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "psyc1777/notes.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Research report",
+      "date": "{{d+10}}",
+      "confidence": "confirmed",
+      "weight": 25,
+      "kind": "report",
+      "sources": [
+        {
+          "label": "psyc1777/brief.txt"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [],
+  "candidateTasks": [],
+  "constraints": [],
+  "suggestedKind": "deadline"
+}

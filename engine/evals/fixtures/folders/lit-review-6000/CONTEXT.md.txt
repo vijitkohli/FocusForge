@@ -1,0 +1,18 @@
+# Honours thesis: federated learning for medical imaging (synthetic)
+
+## What this is
+Honours project. Chapter 2 is the literature review (~6000 words), due to the supervisor as a full draft.
+
+## Current state
+- Reading list of 25 papers compiled (`litreview/reading-list.md`). Read properly: 6 of them (marked [read]). Skimmed abstracts of the rest.
+- Chapter outline drafted (`litreview/outline.md`), no prose written yet.
+- Zotero library set up with all 25 papers.
+
+## Next steps
+1. Read the remaining 19 papers, taking notes in the reading list.
+2. Write section 2.1.
+
+## Deadlines
+- [ ] Lit review full draft to supervisor [due:: {{d+21}}]
+
+Last updated: {{d-2}}

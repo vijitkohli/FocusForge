@@ -1,0 +1,2 @@
+# Iteration 2
+Implement the HTTP server for all iteration 1 functions plus new routes. Each function needs Jest tests with >= 90% coverage of your functions. Team report: each member writes 300 words on their part plus a reflection. Demo in the Week 8 lab (everyone must be able to explain their code).

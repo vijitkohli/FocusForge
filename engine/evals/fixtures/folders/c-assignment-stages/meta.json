@@ -1,0 +1,14 @@
+{
+  "label": "cs1911",
+  "item": {
+    "id": "cs1911",
+    "name": "CS1911",
+    "category": "Learning",
+    "kind": "deadline"
+  },
+  "modified": {
+    "CONTEXT.md": -2,
+    "ass2/spec.md": -9,
+    "ass2/README.md": -9
+  }
+}

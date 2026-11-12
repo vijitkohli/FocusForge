@@ -1,0 +1,10 @@
+{{d-1}} 9f3c2a1 stage 2 autotests pass
+    cave_explorer.c
+    tests/stage2_gems.txt
+{{d-3}} 4b7e110 add gem collection and score
+    cave_explorer.c
+{{d-5}} 2c9d4f0 movement with walls
+    cave_explorer.c
+{{d-7}} 81aa3be stage 1 done: print_cave and validation
+    cave_explorer.c
+    tests/stage1_basic.txt

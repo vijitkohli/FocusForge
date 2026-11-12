@@ -218,4 +218,58 @@ describe('consumers', () => {
     expect(prompt).toContain('Resting')
     expect(prompt).not.toContain('Hidden')
   })
+
+  it('setSourceActivity only moves the date forward', async () => {
+    const fsm = new FileSystemManager()
+    const ws = await fsm.createProject('Thesis')
+    await fsm.setSourceActivity(ws.id, '2026-11-10T00:00:00.000Z')
+    await fsm.setSourceActivity(ws.id, '2026-11-01T00:00:00.000Z')
+    await fsm.setSourceActivity(ws.id, 'not a date')
+    await fsm.setSourceActivity('missing', '2026-11-12T00:00:00.000Z')
+    expect(fsm.getProjects()[0].sourceActivityAt).toBe('2026-11-10T00:00:00.000Z')
+    await fsm.setSourceActivity(ws.id, '2026-11-11T00:00:00.000Z')
+    expect(fsm.getProjects()[0].sourceActivityAt).toBe('2026-11-11T00:00:00.000Z')
+  })
+
+  it('setVaultNote persists under the registry lock and leaves other fields alone', async () => {
+    const fsm = new FileSystemManager()
+    const ws = await fsm.createProject('Thesis', { category: 'Learning', sources: ['/x/t'] })
+    const heard: string[] = []
+    fsm.onRegistryChanged((id, kind) => heard.push(`${id}:${kind}`))
+    // Concurrent writers on the registry: none is lost.
+    await Promise.all([
+      fsm.setVaultNote(ws.id, 'FocusForge/Learning/Thesis/Thesis.md'),
+      fsm.setSourceActivity(ws.id, '2026-11-10T00:00:00.000Z')
+    ])
+    const got = fsm.getProjects()[0]
+    expect(got.vaultNote).toBe('FocusForge/Learning/Thesis/Thesis.md')
+    expect(got.sourceActivityAt).toBe('2026-11-10T00:00:00.000Z')
+    expect(got.sources).toEqual(['/x/t'])
+    await fsm.setVaultNote(ws.id, null)
+    expect(fsm.getRegistryEntries()[0].vaultNote).toBeUndefined()
+    expect(await fsm.setVaultNote('missing', 'FocusForge/x.md')).toBe(false)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(heard).toEqual([])
+  })
+
+  it('onRegistryChanged fires for create, update and delete, outside the lock', async () => {
+    const fsm = new FileSystemManager()
+    const heard: string[] = []
+    const off = fsm.onRegistryChanged((id, kind) => {
+      heard.push(`${id}:${kind}`)
+      // Outside the registry lock: a listener may take it again without deadlock.
+      void fsm.setVaultNote(id, null)
+    })
+    const ws = await fsm.createProject('Thesis')
+    await fsm.updateWorkstream(ws.id, { name: 'Thesis B' })
+    await fsm.updateWorkstream('missing', { name: 'x' })
+    await fsm.saveProjectData(ws.id, { tasks: [] })
+    await fsm.deleteProject(ws.id)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(heard).toEqual([`${ws.id}:created`, `${ws.id}:updated`, `${ws.id}:deleted`])
+    off()
+    await fsm.createProject('Other')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(heard).toHaveLength(3)
+  })
 })

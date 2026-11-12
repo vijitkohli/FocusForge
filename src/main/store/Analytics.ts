@@ -1,4 +1,12 @@
-import { ActivityStats, UpcomingSubtask } from '../../common/types'
+import { ActivityStats, ProjectTask, UpcomingSubtask, Workstream } from '../../common/types'
+import type { ItemNextStep } from '../../common/nextSteps'
+import {
+  currentMilestone,
+  hasMilestones,
+  isStepLive,
+  nextStepForTask
+} from '../../common/milestones'
+import { isUnplanned } from '../../common/outline'
 import { EstimateAccuracy, EstimateSample, estimateAccuracy } from '../../common/estimates'
 import { WeekSummary } from '../../common/review'
 import { localDateKey, parseLocalDate } from './paths'
@@ -32,8 +40,12 @@ export class Analytics {
       for (const task of tasks) {
         if (isNaN(new Date(task.deadline).getTime())) continue
 
+        const milestones = task.milestones ?? []
         for (const subtask of task.subtasks ?? []) {
           if (subtask.isCompleted) continue
+          // Two-level plans: steps staged for a later part, or left over from a
+          // part marked done, aren't actionable yet.
+          if (!isStepLive(task, subtask)) continue
 
           const dateStr = subtask.scheduledDate ?? task.deadline
           const subDate = parseLocalDate(dateStr)
@@ -54,7 +66,8 @@ export class Analytics {
             timeEstimate: subtask.timeEstimate,
             scheduledDate: subtask.scheduledDate,
             deadline: dateStr,
-            daysRemaining
+            daysRemaining,
+            ...milestoneInfo(milestones, subtask.milestoneId)
           })
         }
       }
@@ -62,6 +75,23 @@ export class Analytics {
 
     upcoming.sort((a, b) => a.daysRemaining - b.daysRemaining)
     return upcoming
+  }
+
+  /**
+   * One entry per open task of every active item, for "What next?" (Phase 6
+   * ranks them). A task without a plan, or whose current part has no steps
+   * yet, comes back with needsPlan so background planning can fill it.
+   */
+  async getNextSteps(): Promise<ItemNextStep[]> {
+    const out: ItemNextStep[] = []
+    for (const project of this.projects.getProjects().filter((p) => p.status === 'active')) {
+      const data = await this.projects.loadProjectData(project.id)
+      for (const task of data?.tasks ?? []) {
+        const entry = nextStepEntry(project, task)
+        if (entry) out.push(entry)
+      }
+    }
+    return out
   }
 
   /**
@@ -201,5 +231,68 @@ export class Analytics {
       focusMinutes: Math.round(focusSeconds / 60),
       estimateRatio: accuracy?.ratio ?? null
     }
+  }
+}
+
+function milestoneInfo(
+  milestones: { id: string; title: string }[],
+  id: string | undefined
+): Pick<UpcomingSubtask, 'milestoneTitle' | 'milestoneIndex' | 'milestoneCount'> {
+  if (!id || milestones.length === 0) return {}
+  const index = milestones.findIndex((m) => m.id === id)
+  if (index === -1) return {}
+  return {
+    milestoneTitle: milestones[index].title,
+    milestoneIndex: index + 1,
+    milestoneCount: milestones.length
+  }
+}
+
+function latest(...isoDates: (string | undefined)[]): string | undefined {
+  let best: string | undefined
+  let bestTime = -Infinity
+  for (const iso of isoDates) {
+    if (!iso) continue
+    const t = new Date(iso).getTime()
+    if (!Number.isNaN(t) && t > bestTime) {
+      bestTime = t
+      best = iso
+    }
+  }
+  return best
+}
+
+/** The "What next?" entry for one task, or null when the task is finished. */
+export function nextStepEntry(project: Workstream, task: ProjectTask): ItemNextStep | null {
+  const step = isUnplanned(task) ? null : nextStepForTask(task)
+  const current = currentMilestone(task)
+  const awaitingSteps = hasMilestones(task) && !!current && !step
+  const needsPlan = isUnplanned(task) || awaitingSteps
+  if (!step && !needsPlan) return null
+  const deadlineKind = task.deadlineKind ?? 'hard'
+  const lastDone = latest(...(task.subtasks ?? []).map((s) => s.completedAt))
+  const auto = (task as ProjectTask & { auto?: string }).auto
+  return {
+    projectId: project.id,
+    itemKind: project.kind,
+    category: project.category,
+    taskId: task.id,
+    taskTitle: task.title,
+    subtaskId: step?.id ?? null,
+    title: step?.title ?? null,
+    ...(step?.timeEstimate ? { minutes: step.timeEstimate } : {}),
+    difficulty: step?.difficulty ?? 'medium',
+    ...(current ? { milestoneTitle: current.title } : {}),
+    ...(deadlineKind !== 'none' && task.deadline ? { deadline: task.deadline } : {}),
+    deadlineKind,
+    ...(latest(lastDone, project.sourceActivityAt)
+      ? { lastTouchedAt: latest(lastDone, project.sourceActivityAt) }
+      : {}),
+    needsPlan,
+    itemName: project.name,
+    ...(auto === 'loose-ends' ? { taskAuto: 'loose-ends' as const } : {}),
+    ...(task.origin ? { origin: task.origin.kind } : {}),
+    ...(step?.scheduledDate ? { scheduledDate: step.scheduledDate } : {}),
+    ...(task.assessment?.when ? { dueWhen: task.assessment.when } : {})
   }
 }

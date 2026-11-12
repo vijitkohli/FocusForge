@@ -1,0 +1,33 @@
+{
+  "goal": "Finish CS1911 Assignment 2 (Cave Explorer in C, 20%).",
+  "currentState": "### Where things stand\nStarter code downloaded, nothing written yet. Linked lists are shaky.\n\n### What's next\nRead the spec; Stage 1.",
+  "openItems": [
+    {
+      "text": "Read the Assignment 2 spec",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "cs1911/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Assignment 2 (Cave Explorer)",
+      "date": "{{d+16}}",
+      "confidence": "confirmed",
+      "weight": 20,
+      "kind": "assignment",
+      "sources": [
+        {
+          "label": "cs1911/ass2/spec.md"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [],
+  "candidateTasks": [],
+  "constraints": [],
+  "suggestedKind": "deadline"
+}

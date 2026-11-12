@@ -1,0 +1,4 @@
+# status
+- {{d-1}}: timeouts happen when the sandbox takes > 30 s; `call_tool` has no retry.
+- {{d-4}}: pilot 3/5 pass. Guard blocks 41/50 unsafe calls on passing tasks.
+- Supervisor meeting next Tuesday: wants pilot numbers for all 5 tasks.

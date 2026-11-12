@@ -10,6 +10,14 @@ const tails = new Map<string, Promise<void>>()
  *   settings      settings.json
  *   nudges        nudges.json
  *   discovery     discovery.json (item suggestions cache)
+ *   whatnext      system/whatnext.json and skips.jsonl (Phase 6)
+ *   vaultnote:<id> one item's vault notes (Phase 4 writer flush / reader ingest)
+ *   vaultstate    system/vault/state.json (vault sync state)
+ *   vaultlog:<id> system/vault/log/<id>.json (the notes' Log section)
+ * Order: vaultnote:<id> -> project:<id> -> registry / ledger:<id>, and
+ * vaultstate / vaultlog:<id> last (each held only for its own short
+ * read-modify-write, never while waiting on another key). Phase 4 locks are
+ * never taken inside reader:<id> or project:<id>.
  * Never take an outer key while holding an inner one, and never re-enter a key.
  */
 export function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {

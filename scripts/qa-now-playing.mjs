@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import assert from 'node:assert/strict'
@@ -16,6 +16,53 @@ if (!launcher)
   throw new Error(
     'Usage: node scripts/qa-now-playing.mjs /path/to/isolated-launcher.cjs [output] [--live-ai]'
   )
+// Preflight: the isolated copy must stay isolated, and its settings must carry
+// every item setting so the first-run redirect to the approval screen doesn't
+// replace the "lands on Now" checks. Source paths point at the item fixture
+// (scripts/qa-fixtures.mjs), never at real folders.
+const QA_ROOT = '/tmp/focusforge-qa'
+const underQa = (p) =>
+  typeof p === 'string' &&
+  [QA_ROOT, '/private' + QA_ROOT].some((r) => path.resolve(p).startsWith(r + '/'))
+{
+  assert.ok(underQa(launcher), `Launcher must live under ${QA_ROOT}`)
+  assert.ok(underQa(output), `Output must be under ${QA_ROOT}`)
+  const launcherSource = await readFile(launcher, 'utf8')
+  for (const key of ['documents', 'userData', 'appData']) {
+    const m = new RegExp(`setPath\\(['"]${key}['"],\\s*['"]([^'"]+)['"]`).exec(launcherSource)
+    assert.ok(m && underQa(m[1]), `Launcher must set ${key} under ${QA_ROOT} (see HANDOFF.md §4)`)
+  }
+  const documents = new RegExp(`setPath\\(['"]documents['"],\\s*['"]([^'"]+)['"]`).exec(
+    launcherSource
+  )[1]
+  const settingsFile = path.join(documents, 'FlowState/system/settings.json')
+  let current = {}
+  try {
+    current = JSON.parse(await readFile(settingsFile, 'utf8'))
+  } catch {
+    /* missing or unreadable: start from defaults */
+  }
+  const fixtureHome = `${QA_ROOT}/items/home`
+  const next = {
+    ...current,
+    discoveryCompletedAt: current.discoveryCompletedAt || new Date().toISOString(),
+    // Always overwritten: a copied value could point at real folders.
+    vaultPath: `${fixtureHome}/Vault`,
+    // Vault notes are covered by qa-vault.mjs; keep the writer off here.
+    vaultNotes: false,
+    sourceRoots: [
+      { path: `${fixtureHome}/UNI`, category: 'Learning' },
+      { path: `${fixtureHome}/Projects`, category: 'Projects' }
+    ],
+    initialActiveKeys: Array.isArray(current.initialActiveKeys)
+      ? current.initialActiveKeys
+      : ['thesis', 'comp9321', 'psyc1023', 'personalwebsite', 'focusforge']
+  }
+  assert.ok(underQa(settingsFile) && underQa(next.vaultPath))
+  assert.ok(next.sourceRoots.every((r) => underQa(r.path)))
+  await mkdir(path.dirname(settingsFile), { recursive: true })
+  await writeFile(settingsFile, JSON.stringify(next, null, 2))
+}
 const require = createRequire(import.meta.url)
 const electron = require('electron')
 await mkdir(output, { recursive: true })
@@ -126,7 +173,7 @@ async function screenshot(name, width, height) {
     )
     assert.notEqual(hue, 'rgba(0, 0, 0, 0)', 'Project cover hue was pruned')
     const play = await evaluate(
-      `(() => {const r=document.querySelector('[aria-label="Play in Focus (Space)"]').getBoundingClientRect(); return {top:r.top,bottom:r.bottom,height:innerHeight}})()`
+      `(() => {const r=document.querySelector('[aria-label="Start in Focus (Space)"]').getBoundingClientRect(); return {top:r.top,bottom:r.bottom,height:innerHeight}})()`
     )
     if (width === 1440) {
       const bottom = await evaluate(
@@ -348,7 +395,43 @@ try {
     'Replan did not move every fixture step'
   )
   console.log('Verified carried-over count and re-plan persistence (16 steps).')
-  await click('Play in Focus (Space)')
+  assert.ok((await bodyText()).includes('What next?'), 'what next card missing')
+  assert.ok(await evaluate(`!!document.querySelector('[aria-label="Energy"]')`), 'energy chips missing')
+  assert.ok(
+    await evaluate(`!!document.querySelector('button[title="Not this (S)"]')`),
+    'Not this missing'
+  )
+  await click('Not this')
+  await waitFor(`document.body.innerText.includes('Skipped. Want to say why?')`, 'skip reasons')
+  await click('Bring it back')
+  assert.ok(!(await bodyText()).includes('Skipped. Want to say why?'), 'reasons row stayed open')
+  const opened = await evaluate(`(() => {
+    const el = [...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || '').startsWith('Options for'))
+    if (!el) return false
+    el.click()
+    return true
+  })()`)
+  assert.ok(opened, 'up next options missing')
+  await sleep(200)
+  const played = await evaluate(`(() => {
+    const el = [...document.querySelectorAll('[role="menuitem"]')].find(e => e.textContent.includes('Play this next'))
+    if (!el) return false
+    el.click()
+    return true
+  })()`)
+  assert.ok(played, 'Play this next missing')
+  await sleep(200)
+  assert.ok((await bodyText()).includes('You picked this one.'), 'card ignored Play this next')
+  await click('Low energy')
+  assert.equal(
+    await evaluate(
+      `document.querySelector('[aria-label="Energy"] [aria-checked="true"]')?.textContent?.trim()`
+    ),
+    'Light'
+  )
+  await click('All')
+  console.log('Verified the what next card, Not this, Play this next and the Light chip.')
+  await click('Start in Focus (Space)')
   await both('focus')
   await screenshot('focus', 2056, 1257)
   await evaluate('document.activeElement?.blur()')
@@ -470,7 +553,7 @@ try {
   // Command shortcuts (⌘ = CDP modifier 4) from a neutral focus.
   await evaluate('document.activeElement?.blur()')
   for (const [k, code, expect] of [
-    ['2', 'Digit2', 'New project'],
+    ['2', 'Digit2', 'New item'],
     ['3', 'Digit3', 'Coming up'],
     [',', 'Comma', 'What gets in your way'],
     ['1', 'Digit1', 'Up next']
@@ -654,7 +737,7 @@ try {
 
   // Project create, then delete with cancel then confirm.
   await nav('library')
-  await click('New project')
+  await click('New item')
   await input('input[placeholder="For example, COMP6991"]', 'QA temp')
   await click('Create')
   await sleep(400)
@@ -664,11 +747,11 @@ try {
   await nav('library')
   dialogAccept = false
   await click('Options for QA temp')
-  await click('Delete project')
+  await click('Delete item')
   assert.ok((await evaluate('window.api.getProjects()')).some((p) => p.name === 'QA temp'))
   dialogAccept = true
   await click('Options for QA temp')
-  await click('Delete project')
+  await click('Delete item')
   await sleep(400)
   assert.ok(!(await evaluate('window.api.getProjects()')).some((p) => p.name === 'QA temp'))
   console.log('Verified project create and delete cancel/confirm.')
@@ -1025,6 +1108,34 @@ try {
     await window.api.saveTodayPlan(null)
   })()`)
   }
+
+  // Proxy dot. The coach-error stub below replaces chat-turn for the rest of the run.
+  await nav('now')
+  const health = await evaluate(`(async () => {
+    const start = Date.now()
+    let h = await window.api.getProxyHealth()
+    while (h.status === 'unknown' && Date.now() - start < 6000) {
+      await new Promise(r => setTimeout(r, 200))
+      h = await window.api.getProxyHealth()
+    }
+    return h
+  })()`)
+  if (health.status === 'up' || health.status === 'down') {
+    const label = await evaluate(
+      `document.querySelector('[role="status"][aria-label^="AI"]')?.getAttribute('aria-label') || ''`
+    )
+    assert.ok(
+      health.status === 'up' ? label.includes('connected') : label.includes('offline'),
+      `proxy dot ${JSON.stringify(label)} for ${health.status}`
+    )
+  } else {
+    assert.equal(health.status, 'not-used')
+    assert.equal(
+      await evaluate(`document.querySelector('[role="status"][aria-label^="AI"]')`),
+      null
+    )
+  }
+  console.log('Verified the proxy dot.')
 
   // Coach error states, deterministic and with no model call: the chat-turn
   // handler is replaced from the main process (it stays replaced for the rest

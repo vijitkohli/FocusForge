@@ -27,9 +27,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from adjust import load_adjust_cases, run_adjust  # noqa: E402
 from common import (  # noqa: E402
-    DEFAULT_JUDGE, DEFAULT_JUDGE_FALLBACK, DEFAULT_MODELS, DEFAULT_PYTHON, MODES, REPORT_PATH,
-    judge_path, load_cases, load_env, raw_fingerprint, raw_path, read_json, write_json,
+    DEFAULT_JUDGE, DEFAULT_JUDGE_FALLBACK, DEFAULT_MODELS, DEFAULT_PLAN_JUDGE, DEFAULT_PYTHON, MODES, PLAN_MODES,
+    REPORT_PATH, judge_path, load_cases, load_env, raw_fingerprint, raw_path, read_json, write_json,
 )
+from plan_eval import STATUS_FOR as PLAN_STATUS, TWO_LEVEL_DIMENSIONS, judge_two_level, load_plan_cases, run_plan  # noqa: E402
 from engine_runner import INFRA_ERRORS, effective_error, run_engine  # noqa: E402
 from judge import (  # noqa: E402
     ADJUST_DIMENSIONS, COVERAGE_DIMENSION, MULTITURN_DIMENSIONS,
@@ -62,7 +63,8 @@ def verdict_is_current(cached, rec, mode):
     fp = cached.get("raw_fingerprint")
     if fp is not None and fp != raw_fingerprint(rec):
         return False
-    required = {"execute": [COVERAGE_DIMENSION], "multiturn": MULTITURN_DIMENSIONS, "adjust": ADJUST_DIMENSIONS}
+    required = {"execute": [COVERAGE_DIMENSION], "multiturn": MULTITURN_DIMENSIONS, "adjust": ADJUST_DIMENSIONS,
+                **{m: TWO_LEVEL_DIMENSIONS for m in PLAN_MODES}}
     if any(d not in cached["scores"] for d in required.get(mode, [])):
         return False
     return True
@@ -70,7 +72,9 @@ def verdict_is_current(cached, rec, mode):
 
 def cases_for(mode, only_ids):
     """Cases for one mode; `only_ids` filters across every case file."""
-    if mode == "multiturn":
+    if mode in PLAN_MODES:
+        cases = load_plan_cases(mode)
+    elif mode == "multiturn":
         cases = load_multiturn_cases()
     elif mode == "adjust":
         cases = load_adjust_cases()
@@ -82,6 +86,8 @@ def cases_for(mode, only_ids):
 
 
 def run_one(python, case, model, mode, sample):
+    if mode in PLAN_MODES:
+        return run_plan(python, case, model, sample)
     if mode == "multiturn":
         return run_multiturn(python, case, model, sample)
     if mode == "adjust":
@@ -97,10 +103,13 @@ def judgeable(rec, mode):
         return status == "clarifying"  # skipped straight to a plan: nothing to grade
     if mode == "adjust":
         return status == "updated"
+    if mode in PLAN_MODES:
+        return status == PLAN_STATUS[mode]  # clarifying replies are scored deterministically only
     return False
 
 
-JUDGE_FNS = {"execute": judge_plan, "clarify": judge_question, "multiturn": judge_multiturn, "adjust": judge_adjust}
+JUDGE_FNS = {"execute": judge_plan, "clarify": judge_question, "multiturn": judge_multiturn, "adjust": judge_adjust,
+             **{m: judge_two_level for m in PLAN_MODES}}
 
 
 def _is_quota_error(verdict):
@@ -142,7 +151,11 @@ def main():
     ap.add_argument("--force-judge", action="store_true", help="re-run judge calls even if cached")
     ap.add_argument("--report-only", action="store_true", help="only rebuild REPORT.md from the cache")
     ap.add_argument("--python", default=DEFAULT_PYTHON, help="python used to run engine/main.py")
+    ap.add_argument("--with-expected", action="store_true",
+                    help="plan modes: send expectedEffortMinutes to the engine (diagnostics only; results overwrite the cache)")
     args = ap.parse_args()
+    if args.with_expected:
+        os.environ["PLAN_WITH_EXPECTED"] = "1"
 
     load_env()
     models = _split(args.models) or DEFAULT_MODELS
@@ -156,6 +169,10 @@ def main():
     for m in modes:
         if m not in MODES:
             raise SystemExit(f"unknown mode {m!r} (expected one of {MODES})")
+    if modes and all(m in PLAN_MODES for m in modes) and args.judge_model == DEFAULT_JUDGE:
+        args.judge_model = DEFAULT_PLAN_JUDGE
+    if any(m in PLAN_MODES for m in modes) and not args.no_judge and args.judge_model in models:
+        raise SystemExit(f"--judge-model {args.judge_model} is also a graded model; plan modes are never self-judged")
     concurrency = max(1, min(args.concurrency, MAX_CONCURRENCY))
     if args.concurrency > MAX_CONCURRENCY:
         log(f"concurrency capped at {MAX_CONCURRENCY}")

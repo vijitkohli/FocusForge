@@ -267,6 +267,8 @@ export function approvalReducer(s: ApprovalState, a: ApprovalAction): ApprovalSt
   }
 }
 
+const STATUS_RANK: Record<WorkstreamStatus, number> = { active: 0, paused: 1, archived: 2 }
+
 export interface CategoryGroup {
   category: ItemCategory
   main: ItemRowState[]
@@ -282,7 +284,12 @@ export function groupRows(rows: ItemRowState[]): CategoryGroup[] {
     const inGroup = rows.filter((r) => r.category === category)
     return {
       category,
-      main: inGroup.filter((r) => r.section === 'main'),
+      // Active rows first, then paused, then archived (stable within each).
+      main: inGroup
+        .filter((r) => r.section === 'main')
+        .map((r, i) => ({ r, i }))
+        .sort((a, b) => STATUS_RANK[a.r.status] - STATUS_RANK[b.r.status] || a.i - b.i)
+        .map(({ r }) => r),
       also: inGroup.filter((r) => r.section === 'also'),
       quiet: inGroup.filter((r) => r.section === 'quiet'),
       activeCount: inGroup.filter((r) => r.included && r.status === 'active').length

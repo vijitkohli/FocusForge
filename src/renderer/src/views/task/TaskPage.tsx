@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { AlertCircle, ArrowLeft, MessageSquare } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ListPlus, MessageSquare } from 'lucide-react'
 import {
   overdueSubtasks,
   redistributeSchedule,
@@ -16,7 +16,16 @@ import {
 } from '../../../../common/types'
 import type { NavigationProps } from '../../shell/navigation'
 import { queueStore } from '../../lib/queue'
-import { Button, EmptyState, SegmentedControl, Skeleton } from '../../ui'
+import { Button, EmptyState, Input, SegmentedControl, Skeleton } from '../../ui'
+import {
+  currentMilestone,
+  hasMilestones,
+  redistributeMilestones,
+  setMilestoneDone,
+  slippedMilestones,
+  visibleSteps
+} from '../../../../common/milestones'
+import { localDateKey } from '../../../../common/schedule'
 import { isUnplanned } from '../../../../common/outline'
 import { seriesTemplate } from '../../../../common/recurrence'
 import { formatLocalDate } from '../../lib/dates'
@@ -24,7 +33,8 @@ import { RepeatDrawer } from './RepeatDrawer'
 import { KanbanBoard } from '../../components/KanbanBoard'
 import { ProjectNotesDrawer } from '../../components/ProjectNotesDrawer'
 import { TaskHeader } from './TaskHeader'
-import { ReplanBanner } from './ReplanBanner'
+import { ReplanBanner, SlippedBanner } from './ReplanBanner'
+import { Milestones } from './Milestones'
 import { Prerequisites } from './Prerequisites'
 import { AddStep, StepList } from './StepList'
 import { AdjustPlan } from './AdjustPlan'
@@ -49,7 +59,13 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
   const [reload, setReload] = useState(0)
   const [failure, setFailure] = useState<Failure | null>(null)
   const [splitNotice, setSplitNotice] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'saving' | 'adjusting' | 'splitting' | 'deleting' | null>(null)
+  const [busy, setBusy] = useState<
+    'saving' | 'adjusting' | 'splitting' | 'deleting' | 'planning' | null
+  >(null)
+  // Two-level planning: the one clarifying question, its answer, background status
+  const [question, setQuestion] = useState<string | null>(null)
+  const [answer, setAnswer] = useState('')
+  const [background, setBackground] = useState<'running' | 'failed' | null>(null)
   const [view, setView] = useState<'list' | 'board'>('list')
   const [notesOpen, setNotesOpen] = useState(false)
   const [repeatOpen, setRepeatOpen] = useState(false)
@@ -95,6 +111,25 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
       cancelled = true
     }
   }, [projectId, taskId, reload])
+
+  // Background planning (rolling expansion) and other main-side task changes.
+  useEffect(() => {
+    const offStatus = window.api.onPlanStatus((event) => {
+      if (event.projectId !== projectId || event.taskId !== taskId) return
+      if (event.state === 'running' || event.state === 'queued') setBackground('running')
+      else {
+        setBackground(event.state === 'failed' ? 'failed' : null)
+        setReload((value) => value + 1)
+      }
+    })
+    const offChanged = window.api.onTasksChanged(() => {
+      if (!writing.current) setReload((value) => value + 1)
+    })
+    return () => {
+      offStatus()
+      offChanged()
+    }
+  }, [projectId, taskId])
 
   const back = (): void => onNavigate({ name: 'project', projectId })
 
@@ -276,7 +311,10 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
       (current) => ({
         ...current,
         deadline,
-        subtasks: redistributeSchedule(current.subtasks, deadline)
+        subtasks: redistributeSchedule(current.subtasks, deadline),
+        ...(current.milestones
+          ? { milestones: redistributeMilestones(current.milestones, deadline) }
+          : {})
       }),
       {
         section: 'Plan Adjustments',
@@ -342,6 +380,55 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
     })
   }
 
+  const planCall = (
+    label: string,
+    call: () => Promise<{ success: boolean; status: string; message: string; question?: string }>
+  ): void => {
+    void run('planning', label, async () => {
+      setMessage(null)
+      const result = await call()
+      if (result.status === 'cancelled') return
+      if (result.status === 'clarifying') {
+        if (mounted.current) setQuestion(result.question || result.message)
+        return
+      }
+      if (!result.success)
+        throw new Error(result.message || 'The plan could not be made. Try again.')
+      const project = await window.api.loadProjectData(projectId)
+      const saved = project?.tasks.find((item) => item.id === taskId)
+      if (mounted.current) {
+        if (saved) setTask(saved)
+        setQuestion(null)
+        setAnswer('')
+        setBackground(null)
+        if (result.message && result.status !== 'skipped') setMessage(result.message)
+      }
+      await refreshQueue()
+    })
+  }
+
+  const makePlan = (withAnswer?: string): void =>
+    planCall("Couldn't make a plan.", () => window.api.planTask(projectId, taskId, withAnswer))
+
+  const getNextSteps = (): void =>
+    planCall("Couldn't get the next steps.", () => window.api.expandMilestone(projectId, taskId))
+
+  const replanRest = (): void =>
+    planCall("Couldn't re-plan the rest.", () => window.api.replanTask(projectId, taskId))
+
+  const setPartDone = (milestoneId: string, done: boolean): void => {
+    const target = task?.milestones?.find((m) => m.id === milestoneId)
+    if (!target) return
+    save(
+      done ? "Couldn't mark this part done." : "Couldn't reopen this part.",
+      (current) => setMilestoneDone(current, milestoneId, done),
+      {
+        section: done ? 'Milestones & Completed Work' : 'Plan Adjustments',
+        note: done ? `Marked part "${target.title}" as done.` : `Reopened part "${target.title}".`
+      }
+    )
+  }
+
   const deleteTask = (): void => {
     if (
       !task ||
@@ -369,6 +456,10 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
   }
 
   const disabled = !!busy
+  const groups = task ? visibleSteps(task) : { current: [], earlier: [], unassigned: [] }
+  const shownSteps = task ? [...groups.current, ...groups.unassigned] : []
+  const current = task ? currentMilestone(task) : null
+  const needsSteps = !!task && hasMilestones(task) && !!current && groups.current.length === 0
   return (
     <div className="h-full min-w-0 overflow-y-auto bg-bg-1">
       <div className="mx-auto flex w-full min-w-0 max-w-[1120px] flex-col gap-8 px-4 py-6 sm:px-8 sm:py-8">
@@ -402,6 +493,7 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
           <>
             <TaskHeader
               task={task}
+              projectId={projectId}
               projectName={projectName}
               disabled={disabled}
               onBack={back}
@@ -436,21 +528,63 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
                   .filter(Boolean)
                   .join(' ')}
                 action={
-                  <Button
-                    variant="primary"
-                    disabled={disabled}
-                    onClick={() => onNavigate({ name: 'coach', projectId, planTaskId: task.id })}
-                  >
-                    Plan with coach
-                  </Button>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button variant="primary" disabled={disabled} onClick={() => makePlan()}>
+                      {busy === 'planning' ? 'Making a plan…' : 'Make a plan'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={disabled}
+                      onClick={() => onNavigate({ name: 'coach', projectId, planTaskId: task.id })}
+                    >
+                      Plan with coach
+                    </Button>
+                    {busy === 'planning' && (
+                      <Button variant="ghost" onClick={() => void window.api.cancelPlan()}>
+                        Stop
+                      </Button>
+                    )}
+                  </div>
                 }
               />
+            )}
+            {question && (
+              <form
+                className="space-y-3 rounded-md bg-bg-2 p-4"
+                aria-label="Answer the planning question"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (answer.trim()) makePlan(answer.trim())
+                }}
+              >
+                <p className="text-sm text-fg-1">{question}</p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-0 flex-1 basis-60">
+                    <Input
+                      label="Your answer"
+                      value={answer}
+                      disabled={disabled}
+                      onChange={(event) => setAnswer(event.target.value)}
+                    />
+                  </div>
+                  <Button type="submit" variant="primary" disabled={disabled || !answer.trim()}>
+                    Plan it
+                  </Button>
+                </div>
+              </form>
             )}
             <ReplanBanner
               count={overdueSubtasks(task.subtasks).length}
               disabled={disabled}
               onReplan={replan}
             />
+            <SlippedBanner
+              title={slippedMilestones(task, localDateKey(new Date()))[0]?.title ?? null}
+              disabled={disabled}
+              replanning={busy === 'planning'}
+              onReplan={replanRest}
+            />
+            <Milestones task={task} disabled={disabled} onSetDone={setPartDone} />
             <Prerequisites
               items={task.prerequisites ?? []}
               disabled={disabled}
@@ -459,7 +593,13 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
             <section aria-labelledby="task-steps-title" className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <h2 id="task-steps-title" className="section-title">
-                  Steps
+                  {current ? (
+                    <>
+                      Steps for <em className="not-italic text-fg-1">{current.title}</em>
+                    </>
+                  ) : (
+                    'Steps'
+                  )}
                 </h2>
                 <SegmentedControl
                   label="Step view"
@@ -493,9 +633,32 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
                   </p>
                 )
               )}
+              {background === 'running' && (
+                <div role="status" className="mb-3 space-y-2">
+                  <p className="text-sm text-fg-2">Getting the next part ready…</p>
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              )}
+              {needsSteps && background !== 'running' && (
+                <EmptyState
+                  icon={ListPlus}
+                  title={
+                    background === 'failed'
+                      ? "Couldn't get the next steps"
+                      : 'No steps for this part yet'
+                  }
+                  description="I'll write a few small steps for it from what you've done so far."
+                  action={
+                    <Button variant="primary" disabled={disabled} onClick={getNextSteps}>
+                      {busy === 'planning' ? 'Getting steps…' : 'Get next steps'}
+                    </Button>
+                  }
+                />
+              )}
               {view === 'list' ? (
                 <StepList
-                  items={task.subtasks}
+                  items={shownSteps}
+                  emptyText={needsSteps ? null : undefined}
                   disabled={disabled}
                   onToggle={toggleStep}
                   onEdit={editStep}
@@ -505,11 +668,33 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
                 />
               ) : (
                 <>
-                  <KanbanBoard subtasks={task.subtasks} onMove={moveStep} disabled={disabled} />
+                  <KanbanBoard subtasks={shownSteps} onMove={moveStep} disabled={disabled} />
                   <AddStep disabled={disabled} onAdd={addStep} />
                 </>
               )}
+              {groups.earlier.length > 0 && (
+                <details className="mt-4">
+                  <summary className="meta cursor-pointer text-fg-3">
+                    Done in earlier parts ({groups.earlier.length})
+                  </summary>
+                  <div className="mt-2">
+                    <StepList
+                      items={groups.earlier}
+                      disabled={disabled}
+                      onToggle={toggleStep}
+                      onEdit={editStep}
+                      onDelete={deleteStep}
+                      onSplit={splitStep}
+                    />
+                  </div>
+                </details>
+              )}
             </section>
+            {message && busy !== 'adjusting' && !request && hasMilestones(task) && (
+              <p role="status" className="text-sm text-fg-2">
+                {message}
+              </p>
+            )}
             <AdjustPlan
               request={request}
               message={message}

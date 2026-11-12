@@ -1,19 +1,17 @@
 import { useEffect, useState, type JSX } from 'react'
-import { Check, Clock, Disc3, SkipForward } from 'lucide-react'
-import { localDateKey } from 'src/common/schedule'
+import { Clock, Disc3 } from 'lucide-react'
 import { queueKey, queueStore, useQueue } from '../lib/queue'
 import { completeSubtask } from '../lib/completion'
 import { focusTimer, useFocusTimer } from '../lib/focusTimer'
-import { coverFor } from '../lib/cover'
-import { dayLabel } from '../lib/dates'
-import { Button, Cover, DifficultyTag, EmptyState, PlayButton, Skeleton } from '../ui'
+import { whatNextStore, useWhatNext } from '../lib/whatNextStore'
+import { Button, EmptyState, Skeleton } from '../ui'
 import type { NavigationProps } from '../shell/navigation'
 import { Momentum } from '../components/Momentum'
 import { MoodFilter, CarriedOver } from '../components/QueueControls'
 import { TrackRow } from '../components/TrackRow'
 import { TodayPlan } from '../components/TodayPlan'
+import { WhatNextCard } from '../components/WhatNextCard'
 import { useTodayPlan } from '../lib/todayPlan'
-import { Scrubber } from '../components/Scrubber'
 
 export function NowPlaying({
   onNavigate,
@@ -21,6 +19,7 @@ export function NowPlaying({
   onOpenFocus
 }: NavigationProps): JSX.Element {
   const queue = useQueue()
+  const whatNext = useWhatNext()
   const plan = useTodayPlan()
   const timer = useFocusTimer()
   const current = queue.current
@@ -43,6 +42,7 @@ export function NowPlaying({
   }, [])
   function play(): void {
     if (!current) return
+    whatNextStore.markStart(current.projectId)
     focusTimer.setStep(queueKey(current), current.timeEstimate)
     focusTimer.play()
     onOpenFocus()
@@ -55,7 +55,7 @@ export function NowPlaying({
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
-        event.key !== ' '
+        ![' ', 's', 'S', 'b', 'B', 'ArrowRight', 'Escape'].includes(event.key)
       )
         return
       if (
@@ -64,7 +64,19 @@ export function NowPlaying({
         )
       )
         return
+      if (event.key === 'Escape') {
+        whatNextStore.dismissReasons()
+        return
+      }
       event.preventDefault()
+      if (event.key === 's' || event.key === 'S' || event.key === 'ArrowRight') {
+        whatNextStore.notThis()
+        return
+      }
+      if (event.key === 'b' || event.key === 'B') {
+        void whatNextStore.tooBig()
+        return
+      }
       if (current && timer.running && timer.subtaskId === queueKey(current)) focusTimer.pause()
       else play()
     }
@@ -73,6 +85,7 @@ export function NowPlaying({
   })
   async function done(): Promise<void> {
     if (!current || saving) return
+    whatNextStore.noteDone(current)
     setSaving(true)
     setError('')
     const running = timer.running
@@ -90,7 +103,6 @@ export function NowPlaying({
       setSaving(false)
     }
   }
-  const carried = current?.scheduledDate && current.scheduledDate < localDateKey(new Date())
   return (
     <div className="flex w-full flex-col gap-6">
       <h1 className="section-title text-fg-2">Now Playing</h1>
@@ -108,102 +120,22 @@ export function NowPlaying({
             <Button onClick={() => void queueStore.refresh().catch(() => {})}>Try again</Button>
           }
         />
-      ) : queue.loading && !queue.loaded ? (
+      ) : queue.loading && !queue.loaded && !whatNext.lastKnown ? (
         <div className="now-layout">
           <Skeleton height={420} />
           <Skeleton height={420} />
         </div>
       ) : (
         <div className="now-layout">
-          <section className="now-panel flex min-w-0 flex-col rounded-md bg-bg-2">
-            {current ? (
-              <>
-                <div className="mb-4 flex flex-wrap items-end gap-5">
-                  <div className="relative isolate shrink-0">
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute -inset-12 -z-10"
-                      style={{
-                        background: `radial-gradient(closest-side, color-mix(in srgb, var(--color-${coverFor(current.projectId, current.projectName).hue}) 12%, transparent), transparent)`
-                      }}
-                    />
-                    <Cover
-                      projectId={current.projectId}
-                      name={current.projectName}
-                      size={compact ? 96 : 160}
-                    />
-                  </div>
-                  <button
-                    onClick={() => onOpenProject(current.projectId, current.taskId)}
-                    className="min-w-0 text-left text-sm text-fg-2 hover:text-fg-1"
-                  >
-                    {current.taskTitle}
-                    <span className="mt-1 block">{current.projectName}</span>
-                  </button>
-                </div>
-                <h2 className="now-title" style={{ viewTransitionName: 'now-title' }}>
-                  {current.subtaskTitle}
-                </h2>
-                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-fg-2">
-                  <span className="meta tabular-nums">{current.timeEstimate || 15} min</span>
-                  <DifficultyTag difficulty={current.difficulty} />
-                  <span className="meta">
-                    {carried ? 'from ' : ''}
-                    {dayLabel(current.scheduledDate || current.deadline)}
-                  </span>
-                </div>
-                <div className="pt-5">
-                  <Scrubber stepKey={queueKey(current)} estimateMinutes={current.timeEstimate} />
-                </div>
-                <div className="mt-4 flex items-center justify-center gap-5">
-                  <Button
-                    variant="ghost"
-                    leadingIcon={SkipForward}
-                    disabled={saving}
-                    onClick={() => queueStore.skip(current)}
-                  >
-                    Skip
-                  </Button>
-                  <PlayButton size={64} label="Play in Focus (Space)" onClick={play} />
-                  <Button
-                    variant="secondary"
-                    leadingIcon={Check}
-                    loading={saving}
-                    onClick={() => void done()}
-                  >
-                    Done
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <EmptyState
-                icon={Disc3}
-                title={
-                  !hasProjects
-                    ? 'Nothing playing yet'
-                    : queue.mood !== 'all'
-                      ? `No ${queue.mood === 'lazy' ? 'easy' : queue.mood === 'normal' ? 'medium' : 'hard'} steps queued.`
-                      : 'Queue’s empty.'
-                }
-                description={
-                  !hasProjects
-                    ? "Tell the coach what you're avoiding."
-                    : queue.mood !== 'all'
-                      ? "Switch mood or play what's next."
-                      : 'Plan your next task with the coach.'
-                }
-                action={
-                  queue.mood !== 'all' ? (
-                    <Button onClick={() => queueStore.setMood('all')}>Play what’s next</Button>
-                  ) : queue.skipped.length ? (
-                    <Button onClick={queueStore.clearSkips}>Restore skipped steps</Button>
-                  ) : (
-                    <Button onClick={() => onNavigate({ name: 'library' })}>New task</Button>
-                  )
-                }
-              />
-            )}
-          </section>
+          <WhatNextCard
+            compact={compact}
+            hasProjects={hasProjects}
+            onNavigate={onNavigate}
+            onOpenProject={onOpenProject}
+            onPlay={play}
+            saving={saving}
+            onDone={() => void done()}
+          />
           <aside className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="section-title">Up next</h2>

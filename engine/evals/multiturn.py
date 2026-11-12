@@ -32,7 +32,11 @@ from scorers import score_plan, similarity
 MULTITURN_CASES_PATH = os.path.join(EVALS_DIR, "multiturn_cases.json")
 MAX_ENGINE_CALLS = 6  # the engine forces a plan at 5 user turns; 6 catches a broken cap
 MT_HARD = ["plan_built", "turns_in_bounds", "no_repeat", "no_already_answered", "notes_recall",
-           "user_notes_clean", "no_ledger_renotes", "plan_mentions", "plan_forbidden", "plan_max_minutes"]
+           "user_notes_clean", "no_ledger_renotes", "notes_filed", "plan_mentions", "plan_forbidden", "plan_max_minutes"]
+_NOT_DONE_NOTE = re.compile(
+    r"\b(not (yet )?(started|begun|done|written)|haven'?t (yet )?(started|begun|done)|hasn'?t (started|begun)|"
+    r"yet to|due\b|deadline|needs? to|has to|have to|must|to do|upcoming|will need)\b", re.I)
+_DONE_NOTE = re.compile(r"\b(already|done|finished|completed?|did|wrote|written|submitted|collected|made|have the)\b", re.I)
 MT_SOFT = ["one_question", "notes_no_dupes"]
 LEDGER_TEMPLATE = ("## Constraints & Specifications\n\n## Document Excerpts\n\n"
                    "## Milestones & Completed Work\n\n## Plan Adjustments\n")
@@ -197,6 +201,13 @@ def score_multiturn(record, case):
     renoted = [n["note"] for n in notes
                if any(_groups_match(n.get("note"), groups) for groups in case.get("forbidden_notes") or [])]
     checks["no_ledger_renotes"] = _check(not renoted, f"re-recorded ledger facts: {renoted[:2]}" if renoted else "")
+
+    # Facts about unstarted / upcoming work must not land under completed work
+    # (e.g. "Has an essay due, not started" filed as a milestone).
+    misfiled = [n["note"] for n in notes if n.get("section") == "Milestones & Completed Work"
+                and _NOT_DONE_NOTE.search(n.get("note") or "")
+                and not _DONE_NOTE.search(_NOT_DONE_NOTE.sub(" ", n.get("note") or ""))]
+    checks["notes_filed"] = _check(not misfiled, f"unstarted work filed as completed: {misfiled[:2]}" if misfiled else "")
 
     dupes = []
     all_n = [(n.get("section"), n.get("note") or "") for n in notes + user_notes]

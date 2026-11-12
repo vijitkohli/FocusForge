@@ -1,0 +1,16 @@
+{
+  "label": "data9001",
+  "item": {
+    "id": "data9001",
+    "name": "DATA9001",
+    "category": "Learning",
+    "kind": "deadline"
+  },
+  "modified": {
+    "CONTEXT.md": -1,
+    "ass3/spec.md": -6,
+    "ass3/ass3.ipynb": -2,
+    "todo.md": -1,
+    "vault/Learning/DATA9001 - Data Services.md": -3
+  }
+}

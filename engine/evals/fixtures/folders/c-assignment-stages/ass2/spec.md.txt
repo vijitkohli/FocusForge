@@ -1,0 +1,25 @@
+# CS1911 Assignment 2: Cave Explorer (20%)
+
+Due {{d+16}} 23:59. Submit with `give cs1911 ass2 cave_explorer.c`. Autotests: `1911 autotest cave_explorer`.
+
+You will write a text adventure where the player explores a cave grid stored as a 2D array, collects gems and avoids hazards. All code goes in `cave_explorer.c`. Style is 20% of the mark (functions under 50 lines, no magic numbers, comments).
+
+## Stage 1: Setup (15%)
+- Read the cave size and the starting position from input; print the map with `print_cave()`.
+- Validate input; print "Invalid position" and re-prompt on bad coordinates.
+
+## Stage 2: Movement and gems (25%)
+- Commands `w`, `a`, `s`, `d` move the player; walls block movement.
+- Gems are collected on contact; track the score; command `p` prints stats.
+
+## Stage 3: Hazards and lives (30%)
+- Lava tiles cost a life; falling rocks move down one row each turn and crush the player.
+- Game over when lives reach zero; command `q` quits cleanly.
+- Use a linked list of `struct rock` to track falling rocks (required).
+
+## Stage 4: Save and replay (30%)
+- Command `S` stores the move history in a linked list; `R` replays it from the start.
+- Free all memory on quit (checked with `dcc --leak-check`).
+
+## Testing
+Write at least 5 of your own test inputs. Autotests cover each stage separately.

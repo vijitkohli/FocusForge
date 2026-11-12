@@ -1,0 +1,293 @@
+{
+  "_comment": "Two-level planning cases (plan / expand / replan) over the synthetic folders in fixtures/folders. Dates are day offsets from the run date. expected_effort_minutes is the REMAINING work for a typical student. Never put real student content here.",
+  "profile": "## About Me\n- Second-year uni student, procrastinates on big tasks.\n\n## Preferences\n- Short focused sessions work best.\n\n## Patterns & Friction\n- Stalls when a task feels huge or vague.\n",
+  "cases": [
+    {
+      "id": "pack-ml-assignment-ai-banned",
+      "mode": "plan",
+      "pack_folder": "ml-assignment-ai-banned",
+      "task": {"title": "Assignment 3", "deadline_offset_days": 14, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 15, "kind": "assignment", "when": "Week 10"}},
+      "siblings": [{"title": "Final exam", "deadline_offset_days": 30}],
+      "expected_effort_minutes": [600, 1500],
+      "forbidden_names": ["train.py", "model.py", "main.py", "data.csv", "analysis.ipynb"],
+      "ai_banned": true,
+      "done_items": ["Download the starter notebook and movies.csv"]
+    },
+    {
+      "id": "pack-c-assignment-stages",
+      "mode": "plan",
+      "pack_folder": "c-assignment-stages",
+      "task": {"title": "Assignment 2: Cave Explorer", "deadline_offset_days": 16, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 20, "kind": "assignment"}},
+      "expected_effort_minutes": [900, 1800],
+      "forbidden_names": ["cave.c", "main.c", "Stage 5", "game.c"]
+    },
+    {
+      "id": "pack-c-assignment-half-done",
+      "mode": "plan",
+      "pack_folder": "c-assignment-half-done",
+      "task": {"title": "Assignment 2: Cave Explorer", "deadline_offset_days": 8, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 20, "kind": "assignment"}},
+      "expected_effort_minutes": [450, 900],
+      "forbidden_names": ["main.c", "Stage 5"],
+      "done_items": ["Implement Stage 1 print_cave and input validation", "Implement Stage 2 movement and gem collection"]
+    },
+    {
+      "id": "pack-lit-review-6000",
+      "mode": "plan",
+      "pack_folder": "lit-review-6000",
+      "task": {"title": "Lit review full draft (Chapter 2)", "deadline_offset_days": 21, "deadlineKind": "hard", "scope": "deliverable"},
+      "expected_effort_minutes": [1800, 3600],
+      "forbidden_names": ["Smith et al", "Chen et al", "Section 2.6"]
+    },
+    {
+      "id": "pack-exam-revision-topics",
+      "mode": "plan",
+      "pack_folder": "exam-revision-topics",
+      "task": {"title": "Final exam", "deadline_offset_days": 12, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 50, "kind": "exam"}},
+      "expected_effort_minutes": [900, 2400],
+      "forbidden_names": ["2021 final", "Topic 12"]
+    },
+    {
+      "id": "pack-psyc-lab-report-rubric",
+      "mode": "plan",
+      "pack_folder": "psyc-lab-report-rubric",
+      "task": {"title": "Research report", "deadline_offset_days": 10, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 25, "kind": "report"}},
+      "expected_effort_minutes": [600, 1200],
+      "forbidden_names": ["Smith et al", "data.sav"]
+    },
+    {
+      "id": "pack-thesis-presentation-tbc",
+      "mode": "plan",
+      "pack_folder": "thesis-presentation-tbc",
+      "task": {"title": "Thesis A presentation", "deadline_offset_days": 14, "deadlineKind": "tentative", "scope": "deliverable",
+               "assessment": {"kind": "presentation", "when": "Week 11 (TBC)"}},
+      "siblings": [{"title": "Proposal v5 to supervisor", "deadline_offset_days": 9}],
+      "expected_effort_minutes": [480, 900],
+      "must_mention": [["slot", "date", "confirm", "time"]],
+      "forbidden_names": ["slides.pptx", "results/pilot_v2.md"]
+    },
+    {
+      "id": "pack-thesis-research-goal",
+      "mode": "plan",
+      "pack_folder": "thesis-research-goal",
+      "task": {"title": "Thesis research: next steps", "deadlineKind": "none", "scope": "goal"},
+      "expected_effort_minutes": null,
+      "forbidden_names": ["train.py", "experiment.py", "guard/filter.py", "run_all.py"]
+    },
+    {
+      "id": "pack-website-passion",
+      "mode": "plan",
+      "pack_folder": "website-passion",
+      "task": {"title": "Personal website: next steps", "deadlineKind": "none", "scope": "goal"},
+      "expected_effort_minutes": null,
+      "forbidden_names": ["index.html", "styles.css", "src/pages/blog.astro"]
+    },
+    {
+      "id": "pack-app-feature-handoff",
+      "mode": "plan",
+      "pack_folder": "app-feature-handoff",
+      "task": {"title": "Session tags feature", "deadlineKind": "none", "scope": "goal"},
+      "expected_effort_minutes": [600, 1800],
+      "forbidden_names": ["TagService.ts", "src/main/db.ts", "useTags.ts", "TagStore.ts", "tags.json"]
+    },
+    {
+      "id": "pack-group-project-ledger",
+      "mode": "plan",
+      "pack_folder": "group-project-ledger",
+      "task": {"title": "Iteration 2 (my part)", "deadline_offset_days": 7, "deadlineKind": "hard", "scope": "deliverable"},
+      "ledger": "## Constraints & Specifications\n- Team of 4; my part is /channels.\n\n## Document Excerpts\n\n## Milestones & Completed Work\n- [2026-11-01] Implemented and tested channelsCreate\n- [2026-11-03] Implemented and tested channelsList\n\n## Plan Adjustments\n",
+      "expected_effort_minutes": [360, 900],
+      "done_items": ["Implement and test channelsCreate", "Implement and test channelsList"],
+      "forbidden_names": ["channelsDelete", "channelLeave", "server.py"]
+    },
+    {
+      "id": "pack-small-email",
+      "mode": "plan",
+      "pack_folder": "small-email",
+      "task": {"title": "Referral email to Priya", "deadline_offset_days": 1, "deadlineKind": "hard", "scope": "deliverable"},
+      "expected_effort_minutes": [15, 45],
+      "small": true
+    },
+    {
+      "id": "pack-goal-only-no-spec",
+      "mode": "plan",
+      "pack_folder": "goal-only-no-spec",
+      "task": {"title": "Photography: next steps", "deadlineKind": "none", "scope": "goal"},
+      "expect_clarify": "ask"
+    },
+    {
+      "id": "pack-name-only",
+      "mode": "plan",
+      "pack_folder": null,
+      "item": {"id": "piano", "name": "Piano", "category": "Life", "kind": "passion"},
+      "task": {"title": "Learn piano", "deadlineKind": "none", "scope": "goal"},
+      "expect_clarify": "ask"
+    },
+
+    {
+      "id": "expand-ml-m2-after-m1",
+      "mode": "expand",
+      "pack_folder": "ml-assignment-ai-banned",
+      "task": {"title": "Assignment 3", "deadline_offset_days": 12, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 15, "kind": "assignment"}},
+      "ai_banned": true,
+      "milestone_id": "m2",
+      "existing_plan": {
+        "milestones": [
+          {"id": "m1", "title": "Load and clean the data (Q1)", "estimateMinutes": 240, "doneWhen": "Q1 row-count table prints after each cleaning step", "targetDay": -1, "status": "done"},
+          {"id": "m2", "title": "Exploratory analysis (Q2)", "estimateMinutes": 300, "doneWhen": "Q2 plots, genre table and 150-200 word discussion are in the notebook", "targetDay": 3, "status": "active"},
+          {"id": "m3", "title": "Regression model (Q3)", "estimateMinutes": 360, "doneWhen": "R^2, RMSE and the predicted-vs-actual plot are reported with two limitations", "targetDay": 7, "status": "todo"},
+          {"id": "m4", "title": "Open question and submission (Q4)", "estimateMinutes": 360, "doneWhen": "Q4 answered in 300-400 words; notebook runs top to bottom; PDF exported and submitted", "targetDay": 11, "status": "todo"}
+        ],
+        "subtasks": [
+          {"id": "s1", "title": "Open ass3.ipynb and run the first cell", "min": 5, "day": -4, "status": "done", "milestoneId": "m1"},
+          {"id": "s2", "title": "Parse release_date and drop unparseable rows", "min": 20, "day": -3, "status": "done", "milestoneId": "m1"},
+          {"id": "s3", "title": "Turn the genres string into a list of names", "min": 20, "day": -3, "status": "done", "milestoneId": "m1"},
+          {"id": "s4", "title": "Replace zero budget and revenue with missing values", "min": 15, "day": -2, "status": "done", "milestoneId": "m1"},
+          {"id": "s5", "title": "Build the Q1 row-count table", "min": 20, "day": -1, "status": "done", "milestoneId": "m1"}
+        ]
+      },
+      "done_items": ["Parse release_date and drop unparseable rows", "Turn the genres string into a list of names", "Build the Q1 row-count table"],
+      "forbidden_names": ["train.py", "eda.py"]
+    },
+    {
+      "id": "expand-c-partial-continue",
+      "mode": "expand",
+      "pack_folder": "c-assignment-stages",
+      "task": {"title": "Assignment 2: Cave Explorer", "deadline_offset_days": 13, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 20, "kind": "assignment"}},
+      "milestone_id": "m2",
+      "existing_plan": {
+        "milestones": [
+          {"id": "m1", "title": "Stage 1: setup and map", "estimateMinutes": 150, "doneWhen": "Stage 1 autotests pass", "targetDay": -1, "status": "done"},
+          {"id": "m2", "title": "Stage 2: movement and gems", "estimateMinutes": 300, "doneWhen": "Stage 2 autotests pass", "targetDay": 3, "status": "active", "expanded": "partial"},
+          {"id": "m3", "title": "Stage 3: hazards and lives", "estimateMinutes": 420, "doneWhen": "Stage 3 autotests pass and the rock list works", "targetDay": 7, "status": "todo"},
+          {"id": "m4", "title": "Stage 4: save, replay and memory", "estimateMinutes": 420, "doneWhen": "Stage 4 autotests pass with no leaks", "targetDay": 10, "status": "todo"},
+          {"id": "m5", "title": "Style, own tests and submit", "estimateMinutes": 180, "doneWhen": "functions under 50 lines, 5 own tests, submitted with give", "targetDay": 12, "status": "todo"}
+        ],
+        "subtasks": [
+          {"id": "a1", "title": "Write the w/a/s/d command switch", "min": 15, "day": -2, "status": "done", "milestoneId": "m2"},
+          {"id": "a2", "title": "Block movement into walls", "min": 20, "day": -1, "status": "done", "milestoneId": "m2"},
+          {"id": "a3", "title": "Test movement against the Stage 2 autotests", "min": 15, "day": 0, "status": "done", "milestoneId": "m2"}
+        ]
+      },
+      "done_items": ["Write the w/a/s/d command switch", "Block movement into walls"]
+    },
+    {
+      "id": "expand-lit-review-slow-pace",
+      "mode": "expand",
+      "pack_folder": "lit-review-6000",
+      "task": {"title": "Lit review full draft (Chapter 2)", "deadline_offset_days": 17, "deadlineKind": "hard", "scope": "deliverable"},
+      "estimate_ratio": 1.6,
+      "milestone_id": "m1",
+      "existing_plan": {
+        "milestones": [
+          {"id": "m1", "title": "Read and note the remaining 19 papers", "estimateMinutes": 900, "doneWhen": "every paper in the reading list has notes", "targetDay": 5, "status": "active", "expanded": "partial"},
+          {"id": "m2", "title": "Draft sections 2.1-2.3", "estimateMinutes": 900, "doneWhen": "3700 words drafted", "targetDay": 10, "status": "todo"},
+          {"id": "m3", "title": "Draft sections 2.4-2.5 and the summary table", "estimateMinutes": 720, "doneWhen": "full draft exists", "targetDay": 14, "status": "todo"},
+          {"id": "m4", "title": "Revise, reference and send", "estimateMinutes": 420, "doneWhen": "sent to supervisor", "targetDay": 16, "status": "todo"}
+        ],
+        "subtasks": [
+          {"id": "r1", "title": "Read Karimireddy et al. 2020 (SCAFFOLD) and note the method", "min": 20, "day": -2, "status": "done", "milestoneId": "m1", "focus": 34},
+          {"id": "r2", "title": "Read Abadi et al. 2016 (DP-SGD) and note the privacy guarantee", "min": 20, "day": -1, "status": "done", "milestoneId": "m1", "focus": 31},
+          {"id": "r3", "title": "Read Geyer et al. 2017 and note client-level DP", "min": 20, "day": 0, "status": "done", "milestoneId": "m1", "focus": 32}
+        ]
+      },
+      "done_items": ["Read Karimireddy et al. 2020 (SCAFFOLD)", "Read Abadi et al. 2016 (DP-SGD)", "Read Geyer et al. 2017"],
+      "forbidden_names": ["Smith et al", "Chen et al"]
+    },
+    {
+      "id": "expand-ml-ai-banned-m1",
+      "mode": "expand",
+      "pack_folder": "ml-assignment-ai-banned",
+      "task": {"title": "Assignment 3", "deadline_offset_days": 14, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 15, "kind": "assignment"}},
+      "ai_banned": true,
+      "milestone_id": "m1",
+      "existing_plan": {
+        "milestones": [
+          {"id": "m1", "title": "Load and clean the data (Q1)", "estimateMinutes": 240, "doneWhen": "Q1 row-count table prints after each cleaning step", "targetDay": 3, "status": "active"},
+          {"id": "m2", "title": "Exploratory analysis (Q2)", "estimateMinutes": 300, "doneWhen": "Q2 done", "targetDay": 6, "status": "todo"},
+          {"id": "m3", "title": "Regression (Q3)", "estimateMinutes": 360, "doneWhen": "Q3 done", "targetDay": 10, "status": "todo"},
+          {"id": "m4", "title": "Q4 and submission", "estimateMinutes": 360, "doneWhen": "submitted", "targetDay": 13, "status": "todo"}
+        ],
+        "subtasks": []
+      },
+      "forbidden_names": ["train.py", "clean.py"]
+    },
+
+    {
+      "id": "replan-slipped-half-done",
+      "mode": "replan",
+      "pack_folder": "psyc-lab-report-rubric",
+      "task": {"title": "Research report", "deadline_offset_days": 6, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 25, "kind": "report"}},
+      "existing_plan": {
+        "milestones": [
+          {"id": "m1", "title": "Find the remaining 4 sources", "estimateMinutes": 150, "doneWhen": "6 peer-reviewed sources saved", "targetDay": -4, "status": "done"},
+          {"id": "m2", "title": "Write the introduction", "estimateMinutes": 240, "doneWhen": "450-word intro ending in the hypothesis", "targetDay": -1, "status": "active"},
+          {"id": "m3", "title": "Write method and results", "estimateMinutes": 240, "doneWhen": "method + APA results with figure", "targetDay": 2, "status": "todo"},
+          {"id": "m4", "title": "Write the discussion and abstract", "estimateMinutes": 240, "doneWhen": "500-word discussion + 150-word abstract", "targetDay": 4, "status": "todo"},
+          {"id": "m5", "title": "Format, proofread and submit", "estimateMinutes": 120, "doneWhen": "submitted on Turnitin", "targetDay": 5, "status": "todo"}
+        ],
+        "subtasks": [
+          {"id": "i1", "title": "Write the intro's opening paragraph on Stroop (1935)", "min": 20, "day": -3, "status": "done", "milestoneId": "m2"},
+          {"id": "i2", "title": "Summarise MacLeod (1991) in two sentences for the intro", "min": 15, "day": -2, "status": "done", "milestoneId": "m2"},
+          {"id": "i3", "title": "Write the paragraph linking interference to attention", "min": 20, "day": -2, "status": "todo", "milestoneId": "m2"},
+          {"id": "i4", "title": "Write the hypothesis sentence", "min": 10, "day": -1, "status": "todo", "milestoneId": "m2"}
+        ]
+      },
+      "expected_effort_minutes": [480, 1000],
+      "done_items": ["Write the intro's opening paragraph on Stroop (1935)", "Summarise MacLeod (1991) in two sentences"]
+    },
+    {
+      "id": "replan-deadline-earlier",
+      "mode": "replan",
+      "pack_folder": "c-assignment-half-done",
+      "task": {"title": "Assignment 2: Cave Explorer", "deadline_offset_days": 5, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 20, "kind": "assignment"}},
+      "request": "The deadline got moved earlier, it's now due in 5 days.",
+      "existing_plan": {
+        "milestones": [
+          {"id": "m1", "title": "Stages 1-2", "estimateMinutes": 600, "doneWhen": "Stage 1-2 autotests pass", "targetDay": -1, "status": "done"},
+          {"id": "m2", "title": "Stage 3: hazards and lives", "estimateMinutes": 420, "doneWhen": "Stage 3 autotests pass", "targetDay": 4, "status": "active"},
+          {"id": "m3", "title": "Stage 4: save and replay", "estimateMinutes": 360, "doneWhen": "Stage 4 autotests pass, no leaks", "targetDay": 9, "status": "todo"},
+          {"id": "m4", "title": "Style fixes and submit", "estimateMinutes": 150, "doneWhen": "process_command split; submitted", "targetDay": 11, "status": "todo"}
+        ],
+        "subtasks": [
+          {"id": "h1", "title": "Sketch struct rock on paper", "min": 10, "day": 0, "status": "todo", "milestoneId": "m2"},
+          {"id": "h2", "title": "Add lava tiles that cost a life", "min": 20, "day": 1, "status": "todo", "milestoneId": "m2"}
+        ]
+      },
+      "expected_effort_minutes": [450, 900],
+      "done_items": ["Implement Stage 1", "Implement Stage 2 movement and gems"]
+    },
+    {
+      "id": "replan-lighter-this-week",
+      "mode": "replan",
+      "pack_folder": "exam-revision-topics",
+      "task": {"title": "Final exam", "deadline_offset_days": 12, "deadlineKind": "hard", "scope": "deliverable",
+               "assessment": {"weight": 50, "kind": "exam"}},
+      "request": "make it lighter this week, I have two other deadlines until Sunday",
+      "existing_plan": {
+        "milestones": [
+          {"id": "m1", "title": "Algebra topics 1-3", "estimateMinutes": 300, "doneWhen": "tutorial problems for topics 1-3 done", "targetDay": -1, "status": "done"},
+          {"id": "m2", "title": "Determinants, eigenvalues, diagonalisation", "estimateMinutes": 420, "doneWhen": "topics 4-6 problems done", "targetDay": 3, "status": "active"},
+          {"id": "m3", "title": "Calculus topics 7-11", "estimateMinutes": 540, "doneWhen": "topics 7-11 problems done", "targetDay": 7, "status": "todo"},
+          {"id": "m4", "title": "Past papers under timed conditions", "estimateMinutes": 480, "doneWhen": "3 past papers done and marked", "targetDay": 10, "status": "todo"},
+          {"id": "m5", "title": "Formula sheet and weak-spot review", "estimateMinutes": 180, "doneWhen": "formula sheet finished", "targetDay": 11, "status": "todo"}
+        ],
+        "subtasks": [
+          {"id": "e1", "title": "Do 3 determinant problems from the week 4 tutorial", "min": 20, "day": -1, "status": "done", "milestoneId": "m2"},
+          {"id": "e2", "title": "Work out the eigenvalues of the 2x2 example from lecture", "min": 15, "day": 0, "status": "todo", "milestoneId": "m2"}
+        ]
+      },
+      "expected_effort_minutes": [700, 1800],
+      "done_items": ["Do 3 determinant problems from the week 4 tutorial"]
+    }
+  ]
+}

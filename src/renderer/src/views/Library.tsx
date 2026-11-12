@@ -23,6 +23,7 @@ import { formatLocalDate } from '../lib/dates'
 import { queueStore } from '../lib/queue'
 import type { NavigationProps } from '../shell/navigation'
 import { Button, Cover, EmptyState, Input, Menu, Select, Skeleton, type MenuItem } from '../ui'
+import { SyncStatus } from '../components/SyncStatus'
 
 export interface LibraryProps extends NavigationProps {
   focusNewProject?: boolean
@@ -253,6 +254,7 @@ export function Library({
                   done
                 </p>
                 <p className="mt-1 text-fg-3">{active ? `Active ${active}` : 'No activity yet'}</p>
+                <SyncStatus itemId={project.id} compact />
                 {project.status !== 'active' && (
                   <p className="mt-1 inline-flex rounded-full border border-line px-2 py-0.5 text-[12px] text-fg-2">
                     {project.status === 'paused' ? 'Paused' : 'Archived'}

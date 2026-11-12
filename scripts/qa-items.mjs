@@ -437,6 +437,15 @@ try {
   // ---------- Canaries
   const trace = await cdp.mainEvaluate('JSON.stringify(globalThis.__qaPaths)').then(JSON.parse)
   assert.ok(trace.length > 50, 'tracer recorded paths')
+  // The tracer must have seen the guard's real work, or the checks below prove nothing.
+  assert.ok(
+    trace.some(([op, p]) => op === 'open' && p.endsWith('/Vault/Projects/PROJECTS TO DO.md')),
+    'tracer saw the hub-note heading read'
+  )
+  assert.ok(
+    trace.some(([op, p]) => op === 'opendir' && p.endsWith('/home/UNI')),
+    'tracer saw the UNI listing'
+  )
   const roots = ['/tmp/focusforge-qa/', '/private/tmp/focusforge-qa/']
   const lifeRoots = roots.map((r) => (r + 'items/home/Vault/Life').toLowerCase())
   const allowedOutside = ['out/', 'engine/', 'node_modules/'].map((d) => path.join(REPO, d))
@@ -448,7 +457,7 @@ try {
       !lifeRoots.some((l) => low === l || low.startsWith(l + '/') || low.startsWith(l + ' ')),
       `touched Life: ${op} ${p}`
     )
-    assert.ok(!/gitlab pat\.rtf$|\/\.env$/i.test(p), `touched a secret: ${op} ${p}`)
+    assert.ok(!/api token\.rtf$|\/\.env$/i.test(p), `touched a secret: ${op} ${p}`)
     if (!roots.some((r) => p.startsWith(r))) {
       const real = p.startsWith(REAL_HOME + '/')
       if (real)

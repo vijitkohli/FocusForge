@@ -1,0 +1,14 @@
+{
+  "label": "psyc1777",
+  "item": {
+    "id": "psyc1777",
+    "name": "PSYC1777",
+    "category": "Learning",
+    "kind": "deadline"
+  },
+  "modified": {
+    "brief.txt": -12,
+    "rubric.txt": -12,
+    "notes.md": -2
+  }
+}

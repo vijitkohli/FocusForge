@@ -1,0 +1,8 @@
+# CS1911 Assignment 2: Cave Explorer (20%)
+Due {{d+8}} 23:59. Submit with `give cs1911 ass2 cave_explorer.c`. Autotests: `1911 autotest cave_explorer`. Style 20% (functions under 50 lines, no magic numbers, comments).
+
+## Stage 1: Setup (15%) - read cave size and start position, `print_cave()`, input validation.
+## Stage 2: Movement and gems (25%) - `w a s d`, walls, gems, score, `p` stats.
+## Stage 3: Hazards and lives (30%) - lava costs a life; falling rocks (linked list of `struct rock`) crush the player; game over at zero lives; `q` quits.
+## Stage 4: Save and replay (30%) - `S` stores move history in a linked list, `R` replays it; free all memory (`dcc --leak-check`).
+## Testing - at least 5 of your own test inputs.

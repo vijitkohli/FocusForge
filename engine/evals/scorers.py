@@ -4,9 +4,10 @@
 # date the call was made (stored in the raw record), not the date scoring runs,
 # so cached results score the same on any day.
 
+import os
 import re
+import sys
 from datetime import date, timedelta
-from difflib import SequenceMatcher
 
 DEEP_MIN_SUBTASKS = 10
 BRIEF_MIN_SUBTASKS = 5
@@ -32,16 +33,16 @@ COVERAGE_PASS_RATIO = 0.6
 # (informational only - it never fails coverage).
 COVERAGE_OVER_RATIO = 2.0
 
-_VAGUE_LEADS = (
-    "study", "work on", "research", "look at", "look into", "go over", "think about",
-    "revise", "review", "practice", "practise", "prepare", "continue", "finish", "do", "complete",
-    "learn", "brainstorm", "plan",
+# is_vague_title / is_redundant / similarity moved to engine/plan_rules.py so the
+# planner's validator and these scorers share one definition; re-exported here.
+_ENGINE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ENGINE_DIR not in sys.path:
+    sys.path.append(_ENGINE_DIR)
+from plan_rules import (  # noqa: E402,F401
+    REDUNDANCY_RATIO, _GENERIC_VERBS, _STOPWORDS, _tokens, is_redundant, is_vague_title, similarity,
 )
+
 _BAD_TASK_TITLES = {"build the final checklist now", "apply the adjustment now", "build the checklist", ""}
-_STOPWORDS = {
-    "the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "with", "my", "your", "it",
-    "its", "into", "from", "up", "all", "each", "any", "via", "by", "at", "is", "be",
-}
 
 
 def _parse_date(s):
@@ -57,82 +58,6 @@ def _is_int(v):
 
 def _check(ok, detail=""):
     return {"pass": bool(ok), "detail": detail}
-
-
-def is_vague_title(title):
-    """
-    Flags a vague verb used *on its own*: 'Study', 'Research topic',
-    'Work on essay'. A vague lead verb followed by a concrete object of 4+
-    words ('Review lecture 7 slides on eigenvalues') is allowed. 'work on'
-    is flagged anywhere since it never names an action.
-    """
-    t = re.sub(r"[^\w\s'-]", " ", (title or "").lower()).strip()
-    words = t.split()
-    if not words:
-        return True
-    if "work on" in t:
-        return True
-    for lead in _VAGUE_LEADS:
-        lead_words = lead.split()
-        if words[:len(lead_words)] == lead_words:
-            rest = [w for w in words[len(lead_words):] if w not in _STOPWORDS]
-            return len(rest) < 3
-    return False
-
-
-def _tokens(s):
-    # Underscores stay inside tokens so identifiers like channels_create and
-    # channels_list are different words.
-    words = re.findall(r"[a-z0-9_]+", (s or "").lower())
-    # Crude plural folding: "notifications" ~ "notification", "tests" ~ "test".
-    return {w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
-            for w in words if w not in _STOPWORDS}
-
-
-# Verbs that say nothing about WHICH work item it is.
-_GENERIC_VERBS = {
-    "write", "implement", "set", "do", "make", "draw", "finish", "complete", "start", "read",
-    "create", "add", "build", "draft", "get", "check", "review", "solve", "collect", "find",
-}
-
-
-def similarity(a, b):
-    """(character-level ratio, content-token Jaccard), both 0-1."""
-    ratio = SequenceMatcher(None, (a or "").lower(), (b or "").lower()).ratio()
-    ta, tb = _tokens(a), _tokens(b)
-    jac = len(ta & tb) / len(ta | tb) if ta and tb else 0.0
-    return ratio, jac
-
-
-# Either a near-verbatim restatement or heavy content-word overlap counts as
-# redoing ledger work. Tuned so "Export the final UML diagram" does NOT match
-# "Draw the initial UML diagram" (different work), but "Implement Observer
-# pattern for notifications" does match its done counterpart.
-REDUNDANCY_RATIO = 0.75  # with full distinctive-word coverage; >= 0.85 matches on its own
-
-
-def _numbers(s):
-    return set(re.findall(r"\d+", s or ""))
-
-
-def is_redundant(title, done):
-    # "Write Q4 recurrence" vs done "Write the recurrence for Q1": different
-    # numbered items are different work even when the words overlap.
-    na, nb = _numbers(title), _numbers(done)
-    if na and nb and not (na & nb):
-        return False, 0.0, 0.0
-    ratio, jac = similarity(title, done)
-    if ratio >= 0.85:
-        return True, ratio, jac
-    # Otherwise every distinctive word of the done item must reappear in the
-    # step (so "Write tests for channels_list" != done "Write tests for
-    # channels_create"), plus enough overall overlap.
-    distinctive = _tokens(done) - _GENERIC_VERBS
-    # A single generic noun ("spec") is too weak a signal unless it's a
-    # numbered item ("q1").
-    strong = len(distinctive) >= 2 or any(ch.isdigit() for w in distinctive for ch in w)
-    covered = strong and distinctive <= _tokens(title)
-    return covered and (jac >= 0.5 or ratio >= REDUNDANCY_RATIO), ratio, jac
 
 
 def score_plan(record, case):
@@ -285,11 +210,19 @@ def score_plan(record, case):
 
 
 def planned_minutes(data):
-    """Sum of integer timeEstimates over subtasks AND prerequisites."""
+    """Sum of integer timeEstimates over subtasks AND prerequisites. Two-level
+    plans (milestones present) count the milestone estimates instead of the
+    current batch of steps, since the milestones are the whole job."""
     if not isinstance(data, dict):
         return 0
     total = 0
-    for key in ("subtasks", "prerequisites"):
+    milestones = data.get("milestones")
+    keys = ("subtasks", "prerequisites")
+    if isinstance(milestones, list) and milestones:
+        total += sum(m["estimateMinutes"] for m in milestones
+                     if isinstance(m, dict) and _is_int(m.get("estimateMinutes")) and m["estimateMinutes"] > 0)
+        keys = ("prerequisites",)
+    for key in keys:
         items = data.get(key)
         if isinstance(items, list):
             total += sum(i["timeEstimate"] for i in items

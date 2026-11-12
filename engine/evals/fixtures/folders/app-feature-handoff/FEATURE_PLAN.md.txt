@@ -1,0 +1,12 @@
+# Feature: session tags
+
+Goal: tag sessions with a project name and filter the weekly stats by tag.
+
+1. Data: `Session.tags?: string[]`; `SessionStore` keeps unknown fields; migration not needed (optional field).
+2. Stop dialog: tag picker with recent tags (max 8) and free text; Enter to save.
+3. Stats: tag filter chips above the chart; "All" by default.
+4. Settings: rename/delete a tag across all sessions.
+5. Tests: SessionStore round-trip with tags; filter maths in a pure helper `filterByTag()`; rename across sessions.
+6. QA: manual run through start -> stop -> tag -> stats filter.
+
+Estimated: a few evenings.

@@ -5,7 +5,8 @@
 // REVIEW RULE: no other module may call `fs` on a source-root or vault path.
 // Readers (discovery now; pack/watch in later phases) go through a PathGuard:
 // `check()` / `checkSource()` for named paths, `walk()` / `listDir()` for
-// listings, and `readTextPrefix()` for the few permitted content reads. The
+// listings, and `readTextPrefix()` / `readHeadTail()` / `readBytes()` for
+// the permitted content reads. The
 // guard never logs a denied path; callers log the reason only.
 //
 // Accepted limits:
@@ -15,6 +16,11 @@
 //   (configurable) and the Life rule always folds case.
 // - check() is a point-in-time decision; a symlink swapped in afterwards is
 //   only caught by the next check (readTextPrefix opens with O_NOFOLLOW).
+//
+// WRITES: canWrite() is the only yes/no for a write. It allows the FlowState
+// data folder and, only when `appVaultWrite` is set, `<readable vault>/FocusForge/**`
+// (Phase 4 vault notes). Every other vault path, every source root and every
+// Life folder stay denied, in both the lexical and the realpath form.
 
 import nodeFs from 'fs'
 import os from 'os'
@@ -27,7 +33,8 @@ import {
   isSecretName,
   isVaultConfigName,
   unwrapICloudStub,
-  NOISE_DIRS
+  NOISE_DIRS,
+  APP_VAULT_DIR
 } from './rules'
 import { splitSourceRef } from '../../common/sourceRef'
 
@@ -111,6 +118,12 @@ export interface GuardConfig {
   readableVault: string | null
   /** The only places Phase 2 may write (the FlowState data folder). */
   writableRoots?: string[]
+  /**
+   * Also allow writes under `<readableVault>/FocusForge/` (Phase 4 vault notes).
+   * Set only when the vault-notes write gate holds. Forced off when that folder
+   * is a symlink.
+   */
+  appVaultWrite?: boolean
   lifeAllowlist?: readonly string[]
   /** Default: darwin/win32. Tests pass it explicitly. Life matching always folds case. */
   caseInsensitive?: boolean
@@ -181,6 +194,8 @@ export class PathGuard {
   private readonly source: RootForms[]
   private readonly readable: RootForms | null
   private readonly writable: RootForms[]
+  /** `<readableVault>/FocusForge` forms, or null when vault writes are off. */
+  private readonly appDir: RootForms | null
   private readonly vaultLower: string[]
   private readonly allow: Set<string>
   private readonly cfg: GuardConfig
@@ -203,6 +218,40 @@ export class PathGuard {
         foldName(e.replace(/[\\/]+/g, path.sep).replace(/^[\\/]+/, ''))
       )
     )
+    this.appDir =
+      cfg.appVaultWrite && this.readable && cfg.readableVault
+        ? this.appDirForms(cfg.readableVault)
+        : null
+  }
+
+  /** Forms of `<vault>/FocusForge`, or null when it is a symlink (or can't be checked). */
+  private appDirForms(vault: string): RootForms | null {
+    const dir = path.join(path.resolve(vault), APP_VAULT_DIR)
+    try {
+      if (this.fs.lstatSync(dir).isSymbolicLink()) return null
+    } catch (e) {
+      // Missing is fine (the writer creates it); anything else is refused.
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return null
+    }
+    const f = this.forms(dir)
+    // Before FocusForge/ exists its realpath can't be taken; add the form
+    // under the vault's realpath so a symlinked ancestor (e.g. /var ->
+    // /private/var) still matches the realpath side of canWrite.
+    try {
+      const real = path.join(this.fs.realpathSync(path.resolve(vault)), APP_VAULT_DIR)
+      const extra = this.forms(real)
+      return {
+        cmp: [...new Set([...f.cmp, ...extra.cmp])],
+        lower: [...new Set([...f.lower, ...extra.lower])]
+      }
+    } catch {
+      return f
+    }
+  }
+
+  /** True when this guard allows writes under `<vault>/FocusForge/`. */
+  appVaultWritable(): boolean {
+    return this.appDir !== null
   }
 
   /** Lexical and realpath'd forms of a root, folded both ways. */
@@ -266,7 +315,11 @@ export class PathGuard {
     return paths.filter((p) => this.isReadable(p))
   }
 
-  /** True only under a writable root, never under a source root or any vault, never Life. */
+  /**
+   * True under a writable root (never under a source root or any vault), or,
+   * with appVaultWrite, under `<readable vault>/FocusForge/` (never under a
+   * source root). Never Life. Lexical and realpath forms must both pass.
+   */
   canWrite(absPath: string): boolean {
     if (typeof absPath !== 'string' || !path.isAbsolute(absPath) || absPath.includes('\0')) {
       return false
@@ -279,8 +332,10 @@ export class PathGuard {
       const cmp = this.ci ? x.toLowerCase() : x
       const lower = x.toLowerCase()
       if (this.evaluate(x) === 'life') return false
-      if (!this.writable.some((w) => w.cmp.some((r) => relUnder(cmp, r) !== null))) return false
-      if (this.source.some((s) => s.cmp.some((r) => relUnder(cmp, r) !== null))) return false
+      const under = (f: RootForms): boolean => f.cmp.some((r) => relUnder(cmp, r) !== null)
+      if (this.source.some(under)) return false
+      if (this.appDir && under(this.appDir)) return true
+      if (!this.writable.some(under)) return false
       if (this.vaultLower.some((v) => relUnder(lower, v) !== null)) return false
       return true
     })
@@ -428,13 +483,14 @@ export class PathGuard {
   }
 
   /**
-   * Reads at most `maxBytes` of a readable regular file as UTF-8. The only
-   * content read the guard offers; callers keep what they need and drop the rest.
+   * Opens a readable regular file with O_NOFOLLOW and hands the handle and
+   * its size to `fn`. null when denied, missing, not a regular file or on any
+   * IO error. The only way the guard opens file contents.
    */
-  async readTextPrefix(
+  private async withReadable<T>(
     absPath: string,
-    maxBytes: number
-  ): Promise<{ text: string; truncated: boolean } | null> {
+    fn: (h: FileHandleLike, size: number) => Promise<T | null>
+  ): Promise<T | null> {
     const d = this.check(absPath)
     if (!d.ok) return null
     const flags = nodeFs.constants.O_RDONLY | (nodeFs.constants.O_NOFOLLOW ?? 0)
@@ -443,20 +499,71 @@ export class PathGuard {
       handle = await this.fs.promises.open(d.real, flags)
       const st = await handle.stat()
       if (!st.isFile()) return null
-      const len = Math.max(0, Math.min(maxBytes, st.size))
-      const buf = Buffer.alloc(len)
-      let off = 0
-      while (off < len) {
-        const { bytesRead } = await handle.read(buf, off, len - off, off)
-        if (bytesRead === 0) break
-        off += bytesRead
-      }
-      return { text: buf.subarray(0, off).toString('utf8'), truncated: st.size > off }
+      return await fn(handle, st.size)
     } catch {
       return null
     } finally {
       await handle?.close().catch(() => undefined)
     }
+  }
+
+  private static async readRange(h: FileHandleLike, start: number, len: number): Promise<Buffer> {
+    const buf = Buffer.alloc(Math.max(0, len))
+    let off = 0
+    while (off < buf.length) {
+      const { bytesRead } = await h.read(buf, off, buf.length - off, start + off)
+      if (bytesRead === 0) break
+      off += bytesRead
+    }
+    return buf.subarray(0, off)
+  }
+
+  /**
+   * Reads at most `maxBytes` of a readable regular file as UTF-8. Callers
+   * keep what they need and drop the rest.
+   */
+  async readTextPrefix(
+    absPath: string,
+    maxBytes: number
+  ): Promise<{ text: string; truncated: boolean } | null> {
+    return this.withReadable(absPath, async (h, size) => {
+      const buf = await PathGuard.readRange(h, 0, Math.min(Math.max(0, maxBytes), size))
+      return { text: buf.toString('utf8'), truncated: size > buf.length }
+    })
+  }
+
+  /**
+   * Head and tail of a readable regular file as UTF-8, so a huge file is
+   * never read whole. Files that fit in head + tail come back in full. When
+   * cut, the two parts are joined by an omitted-bytes marker line.
+   */
+  async readHeadTail(
+    absPath: string,
+    headBytes: number,
+    tailBytes: number
+  ): Promise<{ text: string; truncated: boolean; size: number } | null> {
+    const head = Math.max(0, headBytes)
+    const tail = Math.max(0, tailBytes)
+    return this.withReadable(absPath, async (h, size) => {
+      if (size <= head + tail) {
+        const buf = await PathGuard.readRange(h, 0, size)
+        return { text: buf.toString('utf8'), truncated: false, size }
+      }
+      const a = await PathGuard.readRange(h, 0, head)
+      const b = await PathGuard.readRange(h, size - tail, tail)
+      const omitted = size - a.length - b.length
+      const text = `${a.toString('utf8')}\n[… ${omitted.toLocaleString('en-US')} bytes omitted …]\n${b.toString('utf8')}`
+      return { text, truncated: true, size }
+    })
+  }
+
+  /** The bytes of a readable regular file, or null when it is bigger than `maxBytes`. */
+  async readBytes(absPath: string, maxBytes: number): Promise<Buffer | null> {
+    return this.withReadable(absPath, async (h, size) => {
+      if (size > maxBytes) return null
+      const buf = await PathGuard.readRange(h, 0, size)
+      return Buffer.from(buf)
+    })
   }
 
   /** One level of `walk` (children only, never descends). */

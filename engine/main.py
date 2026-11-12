@@ -10,7 +10,7 @@
 #   { "status": "clarifying"|"complete"|"updated", "message": "...",
 #     "data": null|DecompositionResult, "notes": [{section, note}, ...] }
 
-import sys, os, json
+import sys, os, json, re
 from litellm import completion
 from litellm.exceptions import BadRequestError
 from dotenv import load_dotenv
@@ -125,7 +125,36 @@ CLARIFY_RULES = (
     "HOW TO ASK: exactly ONE short question - one sentence, one question mark, under 25 words, "
     "never two questions joined by 'and'/'or'. Prefer what most changes the plan: success criteria, "
     "scope, or what's making it hard to start.\n"
+    "WHEN TO STOP: if the student's latest reply adds no new information ('idk', 'not sure', 'all of it', "
+    "'just give me something'), stop asking and signal readiness - plan from what you have and make finding "
+    "the missing detail one of the steps. Never ask a second time for something they said they don't know.\n"
 )
+
+# Replies that carry no new information. After one of these the coach plans
+# instead of asking again (gemini-3.8-flash-high asked 3-4 questions in a row).
+_FILLER = r"(?:i\s+guess|honestly|really|tbh|either|i\s+think|lol|sorry|haha|ok(?:ay)?|man|mate|yeah|um+|uh+)"
+_UNINFORMATIVE_CHUNK = re.compile(
+    r"^(?:i\s+)?(?:idk|i\s+dunno|dunno|(?:i\s+)?(?:do\s*n[o']?t|don't)\s+know|not\s+(?:really\s+)?sure|no\s+idea|"
+    r"no\s+clue|whatever|anything|nothing|all\s+of\s+it|everything|doesn'?t\s+matter|n/?a|nope|nah|no|"
+    r"just\s+(?:make|give|do)\b.*|you\s+decide|up\s+to\s+you|" + _FILLER + r")(?:\s+" + _FILLER + r")*$",
+    re.I,
+)
+
+
+def _reply_is_uninformative(text):
+    """Every comma/sentence chunk of a short reply is a don't-know phrase or filler."""
+    t = (text or "").strip().lower().replace("’", "'")
+    if not t or len(t.split()) > 12:
+        return False
+    chunks = [c.strip() for c in re.split(r"[,.;!?]+", t) if c.strip()]
+    return bool(chunks) and all(_UNINFORMATIVE_CHUNK.match(c) for c in chunks)
+
+
+def _should_stop_asking(messages):
+    """True once a question was asked and the latest reply carried no new information."""
+    asked = any(m.get("role") == "assistant" for m in messages)
+    last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    return asked and _reply_is_uninformative(last_user)
 
 LEDGER_SECTIONS = [
     "Constraints & Specifications",
@@ -361,18 +390,26 @@ def _checklist_for_prompt(checklist):
     }
 
 
-def run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name, estimate_ratio=None):
+def run_mutation_phase(messages, current_checklist, context_ledger, user_profile, model_name, estimate_ratio=None,
+                       deadline_str=None):
     """
     Reshapes an existing checklist on request (e.g. "make this shorter",
     "expand step 3"). Returns a complete replacement subtask list rather
     than a patch, but the main process merges it back onto the user's progress
     by id (falling back to title), so the model is told which steps are done
-    and must keep ids stable for anything it keeps.
+    and must keep ids stable for anything it keeps. "I already did X" comes
+    back as `completedIds`, which the merge marks done (with completedAt), so
+    the work still counts towards the streak.
     """
     latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
     profile_block = _user_profile_block(user_profile)
     ledger_block = _ledger_block(context_ledger)
     checklist_json = json.dumps(_checklist_for_prompt(current_checklist))
+    today = datetime.now()
+    today_str = today.strftime("%Y-%m-%d")
+    _t, resolved_deadline, days_remaining = _resolve_deadline(deadline_str or "")
+    deadline_line = (f"DEADLINE: {resolved_deadline} ({days_remaining} days remaining)\n"
+                     if deadline_str else "DEADLINE: not set\n")
 
     system_instruction = (
         "You are an expert Productivity Coach. The user already has a checklist for "
@@ -380,6 +417,9 @@ def run_mutation_phase(messages, current_checklist, context_ledger, user_profile
         "while respecting all known project constraints from the context ledger.\n\n"
         f"{profile_block}"
         f"{_pace_block(estimate_ratio)}"
+        "--- CONTEXT ---\n"
+        f"CURRENT DATE: {today_str} ({today.strftime('%A')})\n"
+        f"{deadline_line}\n"
         f"--- CURRENT CHECKLIST ---\n{checklist_json}\n\n"
         f"{ledger_block}\n"
         f"--- USER'S ADJUSTMENT REQUEST ---\n{latest_request}\n\n"
@@ -396,12 +436,20 @@ def run_mutation_phase(messages, current_checklist, context_ledger, user_profile
         "7. Items with \"status\": \"done\" are finished work. Keep every one of them in your output with its "
         "   id and title unchanged, and do not merge, split or reword them - only adjust the remaining steps. "
         "   Drop a done item only if the user explicitly asks to remove completed work. Do not count done "
-        "   steps against a 'make it shorter' request.\n\n"
+        "   steps against a 'make it shorter' request.\n"
+        "8. DATES: resolve relative wording ('after Friday', 'from today', 'next week') against CURRENT DATE. "
+        "   Any scheduledDate you set or change must fall between CURRENT DATE and the DEADLINE (if one is set). "
+        "   Leave a step's date alone unless the request is about timing; new steps get dates in that range.\n"
+        "9. ALREADY DONE: if the user says they already did or finished a step that is still todo, put that "
+        "   step's id in `completedIds` and keep the step in `subtasks` unchanged (same id and title) - the app "
+        "   marks it done so the work still counts. Do this even if they also say 'take it off'. Only use ids "
+        "   that exist in the current checklist; leave `completedIds` empty otherwise.\n\n"
         "--- JSON FORMAT ---\n"
         "Return ONLY a raw JSON object with this exact structure:\n"
         "{\n"
         '  "message": "string - short summary of what changed",\n'
         '  "originalTask": "string",\n'
+        '  "completedIds": ["id of a step the user says is already done"],\n'
         '  "prerequisites": [\n'
         '    { "id": "p1", "title": "Thing to learn/acquire/set up first", "kind": "learn/acquire/setup", "timeEstimate": integer_minutes }\n'
         '  ],\n'
@@ -431,7 +479,26 @@ def run_mutation_phase(messages, current_checklist, context_ledger, user_profile
     content = response.choices[0].message.content
     parsed = _parse_json(content)
     summary = parsed.pop("message", "Plan updated.")
+    parsed["completedIds"] = _valid_completed_ids(parsed.get("completedIds"), current_checklist)
     return summary, parsed
+
+
+def _valid_completed_ids(raw, checklist):
+    """Ids the model marked done that exist in the checklist and are still open."""
+    if not isinstance(raw, list):
+        return []
+    open_ids = set()
+    for s in (checklist or {}).get("subtasks") or []:
+        if isinstance(s, dict) and (s.get("status") or ("done" if s.get("isCompleted") else "todo")) != "done":
+            open_ids.add(str(s.get("id")))
+    for p in (checklist or {}).get("prerequisites") or []:
+        if isinstance(p, dict) and not p.get("isCompleted"):
+            open_ids.add(str(p.get("id")))
+    out = []
+    for i in raw:
+        if str(i) in open_ids and str(i) not in out:
+            out.append(str(i))
+    return out
 
 
 def run_split_phase(step, task_title, context_ledger, user_profile, model_name, estimate_ratio=None):
@@ -555,8 +622,13 @@ def extract_turn_notes(messages, deadline_str, days_remaining, context_ledger, u
         "durable facts worth permanently recording. You are NOT asking questions or "
         "building a checklist here.\n\n"
         "Extract two kinds of facts:\n"
-        "  1. Project facts: a constraint/spec the user stated, or work they say is "
-        "     already done → `notes`.\n"
+        "  1. Project facts → `notes`, filed under exactly one section:\n"
+        "     - \"Constraints & Specifications\": requirements, rules, scope, word counts, tools, "
+        "       deliverables, deadlines and work that is still to do or not started yet "
+        "       (e.g. 'Has an essay due Friday, not started' goes HERE).\n"
+        "     - \"Milestones & Completed Work\": ONLY work the user says is already finished "
+        "       (past tense: 'already collected the data', 'finished the outline'). Never upcoming "
+        "       deadlines, plans, or anything not started.\n"
         "  2. User facts: a lasting preference, working-style trait, or friction pattern "
         "     the user reveals about THEMSELVES (not about this specific task) → "
         "     `userNotes`. Only genuinely durable user-level insights (e.g. 'I always "
@@ -592,9 +664,30 @@ def extract_turn_notes(messages, deadline_str, days_remaining, context_ledger, u
 
     content = response.choices[0].message.content
     parsed = _parse_json(content)
-    notes = _sanitize_notes(parsed.get("notes", []))
+    notes = _refile_notes(_sanitize_notes(parsed.get("notes", [])))
     user_notes = _sanitize_user_notes(parsed.get("userNotes", []))
     return notes, user_notes
+
+
+_NOT_DONE = re.compile(
+    r"\b(not (yet )?(started|begun|done|written)|haven'?t (yet )?(started|begun|done)|hasn'?t (started|begun)|"
+    r"yet to|due\b|deadline|needs? to|has to|have to|must|to do|upcoming|will need)\b", re.I)
+_DONE = re.compile(r"\b(already|done|finished|completed?|did|wrote|written|submitted|collected|made|have the)\b", re.I)
+
+
+def _refile_notes(notes):
+    """
+    A note under 'Milestones & Completed Work' that describes unstarted or
+    upcoming work (and nothing finished) belongs under 'Constraints &
+    Specifications'; models misfiled e.g. 'Has an essay due, not started'.
+    """
+    out = []
+    for n in notes:
+        if n["section"] == "Milestones & Completed Work" and _NOT_DONE.search(n["note"]) \
+                and not _DONE.search(_NOT_DONE.sub(" ", n["note"])):
+            n = {"section": "Constraints & Specifications", "note": n["note"]}
+        out.append(n)
+    return out
 
 
 _CLARIFY_INTRO = (
@@ -813,7 +906,8 @@ def handle_chat_turn_streaming(payload, emit):
             return
 
         turn = _user_turn_count(messages)
-        if turn < MAX_CLARIFYING_TURNS and not _user_wants_no_followup(messages):
+        if turn < MAX_CLARIFYING_TURNS and not _user_wants_no_followup(messages) \
+                and not _should_stop_asking(messages):
             fast_model = payload.get("fastModel")
             if fast_model and fast_model != model_name and not _missing_api_key(fast_model):
                 ready, question = run_clarification_two_model(
@@ -830,10 +924,18 @@ def handle_chat_turn_streaming(payload, emit):
                 return
             # ready -> fall through to execution (no tokens for the checklist)
 
-        result = run_execution_phase(
-            messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, plan_model,
-            estimate_ratio=payload.get("estimateRatio")
-        )
+        if payload.get("twoLevel"):
+            # Phase 5 §2.7: milestones for the whole job + steps for the first one.
+            from planner import run_two_level_from_transcript
+            result = run_two_level_from_transcript(
+                messages, resolved_deadline_str, depth, context_ledger, user_profile, plan_model,
+                estimate_ratio=payload.get("estimateRatio")
+            )
+        else:
+            result = run_execution_phase(
+                messages, resolved_deadline_str, days_remaining, depth, context_ledger, user_profile, plan_model,
+                estimate_ratio=payload.get("estimateRatio")
+            )
         emit({
             "type": "result",
             "status": "complete",
@@ -886,7 +988,8 @@ def handle_chat_turn(payload):
         latest_request = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
         summary, new_checklist = run_mutation_phase(
             messages, current_checklist, context_ledger, user_profile, plan_model,
-            estimate_ratio=payload.get("estimateRatio")
+            estimate_ratio=payload.get("estimateRatio"),
+            deadline_str=payload.get("deadline")
         )
         return {
             "status": "updated",
@@ -931,6 +1034,9 @@ if __name__ == "__main__":
     try:
         if payload.get("mode") == "split":
             emit(handle_split(payload))
+        elif payload.get("mode") in ("plan", "expand", "replan"):
+            from planner import handle_plan_mode
+            emit(handle_plan_mode(payload))
         elif payload.get("stream"):
             handle_chat_turn_streaming(payload, emit)
         else:

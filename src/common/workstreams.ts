@@ -133,13 +133,37 @@ export function displayNameFor(folderName: string): string {
     .join(' ')
 }
 
-/** Characters Obsidian or the filesystem won't take in a note or folder name. */
-function safeNoteName(name: string): string {
-  const s = name
-    .replace(/[\\/:*?"<>|#^[\]]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/^[\s.]+/, '')
-    .trim()
+/** Longest note or folder name in code points. */
+export const NOTE_NAME_MAX_CHARS = 100
+/** And in UTF-8 bytes, so ` (2)` plus `.md` stays under the 255-byte name limit. */
+const NOTE_NAME_MAX_BYTES = 200
+
+// Characters Obsidian or the filesystem won't take, plus C0/C1 control characters.
+// eslint-disable-next-line no-control-regex
+const NOTE_NAME_FORBIDDEN = /[\\/:*?"<>|#^[\]\u0000-\u001f\u007f-\u009f]/g
+
+function trimNoteName(s: string): string {
+  return s.replace(/^[\s.]+/, '').replace(/[\s.]+$/, '')
+}
+
+/**
+ * A name Obsidian and the filesystem both take: NFC; `\ / : * ? " < > | # ^ [ ]`
+ * and control characters become spaces; space runs collapse; leading and
+ * trailing dots and spaces go; capped at 100 code points (and 200 bytes);
+ * 'Untitled' when nothing is left.
+ */
+export function safeNoteName(name: string): string {
+  let s = trimNoteName(
+    String(name ?? '')
+      .normalize('NFC')
+      .replace(NOTE_NAME_FORBIDDEN, ' ')
+      .replace(/\s+/g, ' ')
+  )
+  let chars = Array.from(s)
+  if (chars.length > NOTE_NAME_MAX_CHARS) chars = chars.slice(0, NOTE_NAME_MAX_CHARS)
+  const encoder = new TextEncoder()
+  while (encoder.encode(chars.join('')).length > NOTE_NAME_MAX_BYTES) chars.pop()
+  s = trimNoteName(chars.join(''))
   return s || 'Untitled'
 }
 

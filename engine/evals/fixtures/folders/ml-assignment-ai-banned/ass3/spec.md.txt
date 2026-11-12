@@ -1,0 +1,33 @@
+# DATA9001 Assignment 3: Movie data analysis (15%)
+
+Due: {{d+14}} 17:00 via the course submission system. Late penalty 5% per day.
+
+## Overview
+You are given `movies.csv` (about 45,000 rows: title, release_date, genres, budget, revenue, runtime, vote_average, vote_count, original_language). Complete the starter notebook `ass3.ipynb`. All answers must be produced by code cells in the notebook; markdown cells explain your reasoning.
+
+## Q1 Data cleaning (20 marks)
+- Parse `release_date` into a proper date; drop rows where it cannot be parsed.
+- `genres` is a JSON-like string; turn it into a list of genre names.
+- Budget and revenue of 0 mean "unknown": replace them with missing values.
+- Remove exact duplicate rows. Report how many rows remain after each step in a table.
+
+## Q2 Exploratory analysis (25 marks)
+- Plot the number of movies released per year (1950 onwards).
+- For each genre, compute median runtime and mean vote_average (only movies with vote_count >= 50).
+- Which 10 genres have the highest median return on investment (revenue / budget)? Show a bar chart.
+- Write a 150-200 word discussion of what you found.
+
+## Q3 Regression (30 marks)
+- Build a linear regression predicting `revenue` from budget, runtime, year, vote_average and one-hot genres (scikit-learn).
+- Use an 80/20 train/test split with `random_state=9001`.
+- Report R^2 and RMSE on the test set; plot predicted vs actual.
+- Explain two limitations of the model (100-150 words).
+
+## Q4 Open question (25 marks)
+Pose your own question about the dataset, answer it with at least one visualisation and one statistic, and discuss it in 300-400 words. Marked on clarity of the question, correctness of the analysis and quality of discussion.
+
+## Submission
+Submit `ass3.ipynb` with all outputs visible, plus an exported PDF of the notebook. The notebook must run top to bottom without errors ("Restart & Run All").
+
+## Academic integrity
+Generative AI may not be used to write, debug or explain any code for this assignment. You may use the lecture notebooks, the pandas and scikit-learn documentation, and the course forum.

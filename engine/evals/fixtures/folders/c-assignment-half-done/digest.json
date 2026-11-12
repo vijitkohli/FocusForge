@@ -1,0 +1,70 @@
+{
+  "goal": "Finish CS1911 Assignment 2 (Cave Explorer): Stages 3 and 4 plus style fixes.",
+  "currentState": "### Where things stand\nStages 1 and 2 done with passing autotests. Stages 3-4 not started. process_command is too long for the style mark.",
+  "openItems": [
+    {
+      "text": "Stage 3: lava, lives and falling rocks linked list",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "cs1911-ass2/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "Stage 4: save and replay",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "cs1911-ass2/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "Split process_command (90 lines) for style",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "cs1911-ass2/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Assignment 2 (Cave Explorer)",
+      "date": "{{d+8}}",
+      "confidence": "confirmed",
+      "weight": 20,
+      "kind": "assignment",
+      "sources": [
+        {
+          "label": "cs1911-ass2/spec.md"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [
+    {
+      "date": "{{d-1}}",
+      "text": "Stage 2 autotests pass",
+      "sources": [
+        {
+          "label": "git:cs1911-ass2"
+        }
+      ]
+    },
+    {
+      "date": "{{d-7}}",
+      "text": "Stage 1 done",
+      "sources": [
+        {
+          "label": "git:cs1911-ass2"
+        }
+      ]
+    }
+  ],
+  "candidateTasks": [],
+  "constraints": [],
+  "suggestedKind": "deadline"
+}

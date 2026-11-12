@@ -1,0 +1,76 @@
+{
+  "goal": "Pass Thesis A: give the seminar presentation and submit proposal v5.",
+  "currentState": "### Where things stand\nProposal v4 written with feedback; pilot 3/5 tasks; no slides; presentation slot TBC.",
+  "openItems": [
+    {
+      "text": "Make slides for the Thesis A presentation",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "thesis/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "Revise proposal to v5 per feedback",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "vault:Learning/Thesis Hub/Thesis.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Thesis A presentation",
+      "date": null,
+      "when": "Week 11 (TBC)",
+      "confidence": "tentative",
+      "kind": "presentation",
+      "sources": [
+        {
+          "label": "thesis/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "what": "Proposal v5 to supervisor",
+      "date": "{{d+9}}",
+      "confidence": "confirmed",
+      "kind": "report",
+      "sources": [
+        {
+          "label": "thesis/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [
+    {
+      "date": "{{d-5}}",
+      "text": "Supervisor feedback on proposal v4",
+      "sources": [
+        {
+          "label": "vault:Learning/Thesis Hub/Thesis.md"
+        }
+      ]
+    }
+  ],
+  "candidateTasks": [
+    {
+      "id": "gap-0f4e8b1c2d",
+      "title": "Find the Week 11 presentation slot on the course site",
+      "minutes": 5,
+      "gapKind": "unconfirmed",
+      "why": "Slot TBC",
+      "sources": [
+        {
+          "label": "thesis/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "constraints": [],
+  "suggestedKind": "deadline"
+}

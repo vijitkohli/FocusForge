@@ -32,7 +32,11 @@ DEFAULT_MODELS = [
 # Opus would be the more neutral judge (not a graded model), but its proxy quota
 # runs out mid-suite; pass --judge-model cliproxy/claude-opus-4-6-thinking to use it.
 DEFAULT_JUDGE = "cliproxy/gemini-3.8-flash-high"
-MODES = ("clarify", "execute", "multiturn", "adjust")
+MODES = ("clarify", "execute", "multiturn", "adjust", "plan", "expand", "replan")
+# Two-level planning (Phase 5) cases live in plan_cases.json.
+PLAN_MODES = ("plan", "expand", "replan")
+# Judge for plan modes (never self-judged).
+DEFAULT_PLAN_JUDGE = "cliproxy/claude-opus-4-6-thinking"
 # multiturn/adjust cases live in their own files (multiturn_cases.json,
 # adjust_cases.json); clarify/execute share cases.json.
 BASE_MODES = ("clarify", "execute")

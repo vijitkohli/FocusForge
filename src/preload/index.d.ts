@@ -15,6 +15,14 @@ import {
   SplitStepResult
 } from '../common/types'
 import { AppSettings } from '../common/models'
+import type { PlanStatusEvent, PlanTaskResult } from '../common/milestones'
+import type { ItemNextStep } from '../common/nextSteps'
+
+interface PlanQueueStatusView {
+  state: 'idle' | 'running' | 'paused'
+  queued: number
+  current: string | null
+}
 import {
   ApplyDiscoveryRequest,
   ApplyDiscoveryResult,
@@ -26,6 +34,10 @@ import { EstimateAccuracy } from '../common/estimates'
 import { OutlineAssessment, OutlineReadResult } from '../common/outline'
 import { TodayPlan } from '../common/today'
 import { WeeklyReview } from '../common/review'
+import type { ReaderStatus, RefreshResult } from '../common/readers'
+import type { ItemDigest } from '../common/digest'
+import type { VaultSyncStatus } from '../common/vault'
+import type { ProxyHealthView, SkipEvent, SkipReason, WhatNextSignals } from '../common/whatNext'
 
 declare global {
   interface Window {
@@ -37,6 +49,27 @@ declare global {
       cancelPlanAdjustment: () => Promise<void>
       cancelSplitStep: () => Promise<void>
       cancelCourseOutline: () => Promise<void>
+      cancelPlan: () => Promise<void>
+      planTask: (projectId: string, taskId: string, answer?: string) => Promise<PlanTaskResult>
+      expandMilestone: (
+        projectId: string,
+        taskId: string,
+        milestoneId?: string
+      ) => Promise<PlanTaskResult>
+      replanTask: (projectId: string, taskId: string, request?: string) => Promise<PlanTaskResult>
+      syncItemTasks: (
+        projectId: string
+      ) => Promise<{ added: number; updated: number; error?: string }>
+      getNextSteps: () => Promise<ItemNextStep[]>
+      getWhatNextSignals: () => Promise<WhatNextSignals>
+      recordSkip: (event: SkipEvent) => Promise<boolean>
+      updateSkipReason: (at: string, reason: SkipReason, undone?: boolean) => Promise<void>
+      markTouched: (itemId: string) => Promise<void>
+      clearTodaySkips: () => Promise<void>
+      getProxyHealth: () => Promise<ProxyHealthView>
+      onProxyHealth: (callback: (health: ProxyHealthView) => void) => () => void
+      getPlanQueueStatus: () => Promise<PlanQueueStatusView | null>
+      onPlanStatus: (callback: (event: PlanStatusEvent) => void) => () => void
       readCourseOutline: () => Promise<OutlineReadResult | null>
       importAssessments: (
         projectId: string,
@@ -126,6 +159,23 @@ declare global {
       ) => Promise<{ saved: boolean; filePath?: string }>
       saveSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>
       onOpenFocus: (callback: () => void) => () => void
+      getReaderStatus: () => Promise<Record<string, ReaderStatus>>
+      refreshItem: (itemId: string) => Promise<RefreshResult>
+      refreshAllItems: () => Promise<void>
+      cancelItemRefresh: (itemId: string) => Promise<void>
+      getItemDigest: (itemId: string) => Promise<ItemDigest | null>
+      onReaderStatus: (callback: (all: Record<string, ReaderStatus>) => void) => () => void
+      onDigestUpdated: (callback: (itemId: string) => void) => () => void
+      getVaultStatus: () => Promise<VaultSyncStatus>
+      openInObsidian: (itemId: string, taskId?: string) => Promise<{ ok: true } | { error: string }>
+      syncVaultNow: () => Promise<void>
+      recreateVaultNote: (
+        itemId: string,
+        taskId?: string
+      ) => Promise<{ ok: boolean; error?: string }>
+      resumeVaultFolder: () => Promise<void>
+      getDataviewSnippet: () => Promise<string>
+      onVaultSyncChanged: (callback: () => void) => () => void
     }
   }
 }

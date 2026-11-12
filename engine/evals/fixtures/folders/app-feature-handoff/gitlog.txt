@@ -1,0 +1,7 @@
+{{d-1}} 3e1a9c0 weekly stats chart
+    src/renderer/views/Stats.tsx
+    src/renderer/lib/format.ts
+{{d-3}} b77c2d1 persist sessions atomically
+    src/main/store/SessionStore.ts
+{{d-6}} 12f0e4a timer ring animation
+    src/renderer/components/TimerRing.tsx

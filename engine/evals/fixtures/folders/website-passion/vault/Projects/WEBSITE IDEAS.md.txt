@@ -1,0 +1,5 @@
+# Website ideas
+- Little animated hero (typed text?)
+- Project cards with screenshots
+- A "now" page like other people have
+- Blog later, maybe

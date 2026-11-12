@@ -1,0 +1,14 @@
+{
+  "label": "portfolio-site",
+  "item": {
+    "id": "website",
+    "name": "Personal website",
+    "category": "Projects",
+    "kind": "passion"
+  },
+  "modified": {
+    "CONTEXT.md": -6,
+    "README.md": -30,
+    "vault/Projects/WEBSITE IDEAS.md": -8
+  }
+}

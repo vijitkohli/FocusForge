@@ -1,0 +1,4 @@
+# Thesis
+- Supervisor meets fortnightly, Tuesdays.
+- Feedback on v4: narrow the evaluation to two benchmarks; add a risk section.
+- Presentation: practise with lab group the week before.

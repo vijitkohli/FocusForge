@@ -1,0 +1,5 @@
+# DATA9001 - Data Services
+Tags: #course
+- Lecturer posts lab solutions on Fridays.
+- Assignment 3 is the big one this term; the exam is mostly short-answer pandas + SQL.
+- Remember: no AI for assignment code (integrity policy).

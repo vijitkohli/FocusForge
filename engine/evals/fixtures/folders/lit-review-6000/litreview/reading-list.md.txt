@@ -1,0 +1,27 @@
+# Reading list (25)
+
+1. McMahan et al. 2017 - *Communication-efficient learning of deep networks from decentralized data* - FedAvg; the baseline everyone cites [read]
+2. Li et al. 2020 - *Federated optimization in heterogeneous networks* - FedProx; proximal term for non-IID clients [read]
+3. Kairouz et al. 2021 - *Advances and open problems in federated learning* - survey; use for structure [read]
+4. Zhao et al. 2018 - *Federated learning with non-IID data* - weight divergence under skew [read]
+5. Karimireddy et al. 2020 - *SCAFFOLD* - control variates for client drift
+6. Sheller et al. 2020 - *Federated learning in medicine* - multi-institution brain tumour segmentation [read]
+7. Rieke et al. 2020 - *The future of digital health with federated learning* - position paper
+8. Dayan et al. 2021 - *Federated learning for predicting clinical outcomes in COVID-19* - EXAM model, 20 sites
+9. Kaissis et al. 2020 - *Secure, privacy-preserving and federated machine learning in medical imaging* - review
+10. Bonawitz et al. 2017 - *Practical secure aggregation* - secure aggregation protocol [read]
+11. Abadi et al. 2016 - *Deep learning with differential privacy* - DP-SGD
+12. Geyer et al. 2017 - *Differentially private federated learning* - client-level DP
+13. Zhu et al. 2019 - *Deep leakage from gradients* - gradient inversion attack
+14. Hitaj et al. 2017 - *Deep models under the GAN* - information leakage attack
+15. Wang et al. 2020 - *Federated learning with matched averaging* - FedMA
+16. Hsu et al. 2019 - *Measuring the effects of non-identical data distribution* - Dirichlet label skew benchmark
+17. Li et al. 2021 - *FedBN* - local batch norm for feature shift
+18. Smith et al. 2017 - *Federated multi-task learning* - MOCHA
+19. Fallah et al. 2020 - *Personalized federated learning with theoretical guarantees* - Per-FedAvg
+20. T Dinh et al. 2020 - *Personalized federated learning with Moreau envelopes* - pFedMe
+21. Roth et al. 2020 - *Federated learning for breast density classification* - real-world deployment
+22. Guo et al. 2021 - *Multi-institutional collaborations for improving deep learning-based MRI reconstruction* - FL-MRCM
+23. Liu et al. 2021 - *FedDG* - domain generalisation in medical segmentation
+24. Yang et al. 2019 - *Federated machine learning: concept and applications* - taxonomy horizontal/vertical
+25. Lyu et al. 2020 - *Threats to federated learning: a survey* - attacks overview

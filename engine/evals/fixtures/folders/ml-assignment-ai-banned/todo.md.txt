@@ -1,0 +1,5 @@
+# todo
+- [x] download starter notebook + movies.csv
+- [ ] read ass3 spec properly
+- [ ] ask on forum whether Q4 can use an external dataset (probably not)
+- [ ] revise week 7 regression lecture before Q3

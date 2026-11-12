@@ -56,7 +56,7 @@ Return ONLY a JSON object:
 {"no_repeat": {"score": 1-5, "rationale": "..."}, "stop_timing": {...}, "plan_uses_answers": {...}, "worst_issue": "one sentence naming the single biggest problem"}
 """
 
-_ADJUST_RUBRIC = """You are grading how an AI productivity coach adjusted a university student's EXISTING checklist after one request. In the ORIGINAL checklist, items with "status": "done" are finished work and must come back unchanged (same id and title; the reply format has no status field, so a missing status in the reply is NOT a change), unless the student explicitly asked to remove finished work. Prerequisites must be kept unless the request is about them. Kept steps should keep their ids; new steps get new ids. The coach also returns a one-line summary message.
+_ADJUST_RUBRIC = """You are grading how an AI productivity coach adjusted a university student's EXISTING checklist after one request. In the ORIGINAL checklist, items with "status": "done" are finished work and must come back unchanged (same id and title; the reply format has no status field, so a missing status in the reply is NOT a change), unless the student explicitly asked to remove finished work. Prerequisites must be kept unless the request is about them. Kept steps should keep their ids; new steps get new ids. The coach also returns a one-line summary message. The reply may also list `completedIds`: open steps the student says they ALREADY DID. The app marks those steps done (they leave the remaining plan and the student keeps the credit), so for "I already did X (take it off)" listing X in completedIds fully satisfies the request, even though X still appears in the returned list.
 
 Score from 1 (bad) to 5 (excellent) with a one-sentence rationale:
 - faithfulness: Did the coach do exactly what was asked - fully - and nothing else? Penalise (a) not doing the request or doing it only partly (e.g. "shorter" but the same number of remaining steps; dates not actually moved; the step to expand left as one big step), (b) unrequested changes (dropping, rewording, re-dating or reordering steps the request didn't touch; touching done items; dropping prerequisites), and (c) a summary message that misdescribes what changed. 5 = precisely the requested change; 3 = request mostly done but with notable collateral changes or gaps; 1 = request ignored or the plan was rewritten wholesale.
@@ -141,6 +141,7 @@ def judge_adjust(judge_model, record, case):
         f"STUDENT'S REQUEST: {p['messages'][-1]['content']}",
         f"COACH'S SUMMARY MESSAGE: {result.get('message')}",
         f"ADJUSTED CHECKLIST RETURNED BY THE COACH (its format has no status field; the app keeps finished items finished by matching id + title):\n{checklist_view(result.get('data'), with_status=False)}",
+        f"COMPLETED IDS (marked done by the app): {json.dumps((result.get('data') or {}).get('completedIds') or [])}",
     ])
     return _ask(judge_model, _ADJUST_RUBRIC, user, ADJUST_DIMENSIONS, extra_keys=("worst_issue",))
 

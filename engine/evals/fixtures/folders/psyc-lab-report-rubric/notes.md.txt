@@ -1,0 +1,4 @@
+# report notes
+- Lab summary output: t(211) = 14.2, p < .001, d = 0.98. Congruent M = 712 ms, incongruent M = 841 ms.
+- Found 2 sources so far (Stroop 1935, MacLeod 1991). Need 4 more.
+- Nothing written yet.

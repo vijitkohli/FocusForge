@@ -279,7 +279,9 @@ def score_adjust(record, case):
 
     # -- the merged view (what the app shows) -----------------------------------
     allow_drop = requests_removing_completed(request)
-    merged = merge_checklist(orig, {"subtasks": out_subs, "prerequisites": out_pres}, allow_drop_completed=allow_drop)
+    merged = merge_checklist(orig, {"subtasks": out_subs, "prerequisites": out_pres,
+                                    "completedIds": data.get("completedIds") or []},
+                             allow_drop_completed=allow_drop)
     m_todo = [s for s in merged["subtasks"] if derive_status(s) != "done"]
     o_todo = [s for s in orig_subs if derive_status(s) != "done"]
     o_idx = {str(s["id"]): i for i, s in enumerate(orig_subs)}
@@ -357,6 +359,15 @@ def score_adjust(record, case):
         ok = not raw_done and not left and allow_drop
         why = (f"raw output still lists done: {raw_done[:2]}; " if raw_done else "") + \
               f"after merge {len(left)} done shown; app regex allowDropCompleted={allow_drop}"
+    elif t == "mark_done":
+        # "I already did X": the step must end up DONE (with credit), not just vanish.
+        marked = {str(s.get("id")) for s in merged.get("completedSubtasks") or []}
+        missing = [str(tid) for tid in expect["targets"] if str(tid) not in marked]
+        others = [s.get("title") for s in merged.get("completedSubtasks") or []
+                  if str(s.get("id")) not in {str(x) for x in expect["targets"]}]
+        ok = not missing and not others
+        why = (f"not marked done: {missing}; " if missing else "") + (f"also marked: {others}" if others else "") \
+            or f"marked done: {sorted(marked)}"
     elif t == "remove_prereq":
         still = []
         for tid in expect["targets"]:
