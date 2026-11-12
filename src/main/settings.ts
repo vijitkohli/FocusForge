@@ -74,7 +74,13 @@ export function normalizeSettings(raw: unknown): AppSettings {
           .filter(Boolean)
       : d.initialActiveKeys,
     discoveryCompletedAt: stringOrNull(r.discoveryCompletedAt),
-    discoveryDismissedAt: stringOrNull(r.discoveryDismissedAt)
+    discoveryDismissedAt: stringOrNull(r.discoveryDismissedAt),
+    vaultNotes: typeof r.vaultNotes === 'boolean' ? r.vaultNotes : d.vaultNotes,
+    digestModel:
+      typeof r.digestModel === 'string' && r.digestModel.trim() && !r.digestModel.includes('\0')
+        ? r.digestModel.trim()
+        : d.digestModel,
+    readersEnabled: typeof r.readersEnabled === 'boolean' ? r.readersEnabled : d.readersEnabled
   }
 }
 
@@ -97,6 +103,8 @@ export function sanitizeRendererSettingsPatch(patch: unknown): Partial<AppSettin
   if (!patch || typeof patch !== 'object') return {}
   const out = { ...(patch as Record<string, unknown>) }
   for (const k of MAIN_ONLY_KEYS) delete out[k]
+  // A malformed toggle would normalise to the default (on): keep the stored value instead.
+  if ('vaultNotes' in out && typeof out.vaultNotes !== 'boolean') delete out.vaultNotes
   return out as Partial<AppSettings>
 }
 

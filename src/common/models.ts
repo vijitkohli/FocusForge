@@ -40,6 +40,8 @@ export const MODEL_GROUPS: ModelGroup[] = [
 // ~3x slower to first token (~7s) than gemini-3-flash, the fast alternative.
 export const DEFAULT_CHAT_MODEL = 'cliproxy/gemini-3.8-flash-high'
 export const DEFAULT_PLAN_MODEL = 'cliproxy/gemini-3.8-flash-high'
+/** Background item summaries (Phase 3 readers): fast model, no streaming. */
+export const DEFAULT_DIGEST_MODEL = 'cliproxy/gemini-3-flash'
 
 /** A folder FocusForge may read, with the category its subfolders start in. `~` is kept unexpanded. */
 export interface SourceRoot {
@@ -63,6 +65,11 @@ export interface SourceRoot {
  * - initialActiveKeys: match keys of the items that start checked and active
  *   on the approval screen (first-run slice).
  * - discoveryCompletedAt / discoveryDismissedAt: first-run approval state (ISO).
+ * - vaultNotes: write item and task notes under `<vault>/FocusForge/` (Phase 4).
+ *   Only ever that folder, and only once vaultPath is saved. The renderer may
+ *   toggle it (Settings), since it can't widen what FocusForge reads.
+ * - digestModel: model for background item summaries (Phase 3 readers).
+ * - readersEnabled: master switch for watching sources and background summaries.
  */
 export interface AppSettings {
   chatModel: string
@@ -75,6 +82,9 @@ export interface AppSettings {
   initialActiveKeys: string[]
   discoveryCompletedAt: string | null
   discoveryDismissedAt: string | null
+  vaultNotes: boolean
+  digestModel: string
+  readersEnabled: boolean
 }
 
 export const DEFAULT_SOURCE_ROOTS: SourceRoot[] = [
@@ -93,5 +103,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   vaultCategories: DEFAULT_VAULT_CATEGORIES,
   initialActiveKeys: [...DEFAULT_INITIAL_ACTIVE],
   discoveryCompletedAt: null,
-  discoveryDismissedAt: null
+  discoveryDismissedAt: null,
+  vaultNotes: true,
+  digestModel: DEFAULT_DIGEST_MODEL,
+  readersEnabled: true
 }
