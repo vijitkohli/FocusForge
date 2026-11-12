@@ -81,6 +81,7 @@ export function spliceSplit(
     difficulty: part.difficulty,
     timeEstimate: part.timeEstimate,
     ...(parent.scheduledDate ? { scheduledDate: parent.scheduledDate } : {}),
+    ...(parent.milestoneId ? { milestoneId: parent.milestoneId } : {}),
     ...(i === 0 && parent.focusSeconds ? { focusSeconds: parent.focusSeconds } : {})
   }))
   return {

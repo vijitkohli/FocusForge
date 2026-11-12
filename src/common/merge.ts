@@ -6,7 +6,7 @@
 // user had would be reset - and since streaks/heatmap/burndown are derived
 // from completedAt, that history would be silently erased too.
 
-import { Prerequisite, Subtask, deriveStatus, setSubtaskStatus } from './types'
+import { Milestone, Prerequisite, Subtask, deriveStatus, setSubtaskStatus } from './types'
 
 export interface ChecklistState {
   subtasks: Subtask[]
@@ -17,6 +17,12 @@ export interface ChecklistState {
 export interface IncomingChecklist {
   subtasks: Partial<Subtask>[]
   prerequisites?: Partial<Prerequisite>[]
+  /**
+   * "I already did X": ids of the user's OPEN items the reply says are done.
+   * They are marked done (with completedAt, so the work counts toward the
+   * streak) even if the reply dropped them.
+   */
+  completedIds?: string[]
 }
 
 export interface MergeChecklistOptions {
@@ -37,6 +43,9 @@ export interface MergeChecklistResult {
   restoredSubtasks: Subtask[]
   /** Completed prerequisites the AI dropped that were re-inserted. */
   restoredPrerequisites: Prerequisite[]
+  /** Open items marked done through `completedIds`. */
+  completedSubtasks: Subtask[]
+  completedPrerequisites: Prerequisite[]
 }
 
 /** Case/whitespace/punctuation-insensitive title key for fallback matching. */
@@ -55,7 +64,7 @@ export function normalizeTitle(title: string | undefined): string {
  * still pass. Titles naming different numbers ("Q1" vs "Q2"/"Q10", "Part 2"
  * vs "Part 3") are never similar - numbered sibling steps share most words.
  */
-function titlesSimilar(a: string | undefined, b: string | undefined): boolean {
+export function titlesSimilar(a: string | undefined, b: string | undefined): boolean {
   const na = normalizeTitle(a)
   const nb = normalizeTitle(b)
   if (!na || !nb) return false
@@ -75,7 +84,7 @@ function titlesSimilar(a: string | undefined, b: string | undefined): boolean {
  * (guarded by title similarity when the previous item is completed), then by
  * normalized title among the still-unclaimed previous items.
  */
-function pairItems<
+export function pairItems<
   P extends { id: string; title: string; isCompleted: boolean },
   I extends { id?: string; title?: string }
 >(previous: P[], incoming: I[]): { matches: (P | undefined)[]; claimed: Set<P> } {
@@ -140,6 +149,10 @@ export function mergeChecklist(
     return id
   }
 
+  const doneIds = new Set((incoming.completedIds ?? []).map(String))
+  const completedSubtasks: Subtask[] = []
+  const completedPrerequisites: Prerequisite[] = []
+
   // --- Subtasks ---
   const inSubtasks = (incoming.subtasks ?? []).filter((s) => s && normalizeTitle(s.title))
   const sub = pairItems(prevSubtasks, inSubtasks)
@@ -156,6 +169,12 @@ export function mergeChecklist(
       // No setSubtaskStatus for 'done': it would stamp a legacy
       // (pre-completedAt) item with today's date and fake a streak day.
       if (status === 'done') return { ...old, status: 'done', isCompleted: true }
+      if (doneIds.has(old.id)) {
+        // The user already did it: keep it as it was, now done (stamps today).
+        const done = setSubtaskStatus({ ...old }, 'done')
+        completedSubtasks.push(done)
+        return done
+      }
       return setSubtaskStatus({ ...old, ...fields, id: old.id } as Subtask, status)
     }
     return setSubtaskStatus(
@@ -163,6 +182,12 @@ export function mergeChecklist(
       'todo'
     )
   })
+
+  // Marked done but dropped from the reply: keep it (done) - the work happened.
+  const droppedDone = prevSubtasks
+    .filter((s) => !sub.claimed.has(s) && deriveStatus(s) !== 'done' && doneIds.has(s.id))
+    .map((s) => setSubtaskStatus({ ...s }, 'done'))
+  completedSubtasks.push(...droppedDone)
 
   const restoredSubtasks = options.allowDropCompleted
     ? []
@@ -177,7 +202,13 @@ export function mergeChecklist(
     delete fields.isCompleted
     if (old) {
       assignedIds.add(old.id)
-      return old.isCompleted ? { ...old } : { ...old, ...fields, id: old.id, isCompleted: false }
+      if (old.isCompleted) return { ...old }
+      if (doneIds.has(old.id)) {
+        const done = { ...old, isCompleted: true }
+        completedPrerequisites.push(done)
+        return done
+      }
+      return { ...old, ...fields, id: old.id, isCompleted: false }
     }
     return {
       ...fields,
@@ -192,11 +223,113 @@ export function mergeChecklist(
     : prevPrereqs.filter((p) => !pre.claimed.has(p) && p.isCompleted)
 
   return {
-    subtasks: [...restoredSubtasks, ...merged],
+    subtasks: [...restoredSubtasks, ...droppedDone, ...merged],
     prerequisites: [...restoredPrerequisites, ...mergedPrereqs],
     restoredSubtasks,
-    restoredPrerequisites
+    restoredPrerequisites,
+    completedSubtasks,
+    completedPrerequisites
   }
+}
+
+// --- Two-level plans ----------------------------------------------------------
+
+export interface PlanState extends ChecklistState {
+  milestones?: Milestone[]
+}
+
+export interface IncomingPlan extends IncomingChecklist {
+  milestones?: Partial<Milestone>[]
+}
+
+export interface MergePlanResult extends MergeChecklistResult {
+  milestones: Milestone[]
+  /** Done milestones the AI dropped that were put back. */
+  restoredMilestones: Milestone[]
+  /** Incoming milestone id -> the id it was saved under. */
+  milestoneIdMap: Map<string, string>
+}
+
+/**
+ * Merges a re-plan onto the task. Milestones follow the subtask rules: match
+ * by id (title-guarded when the old one is done), then by title; done ones
+ * are kept verbatim and restored if dropped; matched open ones take the AI's
+ * fields but keep `expanded`; new ones get fresh ids. Steps then go through
+ * mergeChecklist with their milestoneId remapped to the saved ids. The first
+ * open milestone becomes active.
+ */
+export function mergePlan(
+  previous: PlanState,
+  incoming: IncomingPlan,
+  options: MergeChecklistOptions = {}
+): MergePlanResult {
+  const stamp = Date.now()
+  const prevMs = previous.milestones ?? []
+  const inMs = (incoming.milestones ?? []).filter((m) => m && normalizeTitle(m.title))
+  const asItems = prevMs.map((m) => ({ ...m, isCompleted: m.status === 'done' }))
+  const pair = pairItems(asItems, inMs)
+  const usedIds = new Set(prevMs.map((m) => m.id))
+  const idMap = new Map<string, string>()
+  let n = 0
+  const merged: Milestone[] = inMs.map((item, i) => {
+    const old = pair.matches[i]
+    if (old) {
+      if (item.id != null) idMap.set(String(item.id), old.id)
+      const base = prevMs.find((m) => m.id === old.id) as Milestone
+      if (base.status === 'done') return { ...base }
+      const est = Number(item.estimateMinutes)
+      return {
+        ...base,
+        title: String(item.title).trim(),
+        estimateMinutes: Number.isFinite(est) && est > 0 ? Math.round(est) : base.estimateMinutes,
+        doneWhen: String(item.doneWhen ?? base.doneWhen),
+        ...(item.targetDate ? { targetDate: item.targetDate } : {}),
+        status: base.status,
+        ...(base.expanded ? { expanded: base.expanded } : {})
+      }
+    }
+    let id = item.id != null ? String(item.id) : ''
+    while (!id || usedIds.has(id)) id = `ms-${stamp}-${n++}`
+    usedIds.add(id)
+    if (item.id != null) idMap.set(String(item.id), id)
+    const est = Number(item.estimateMinutes)
+    return {
+      id,
+      title: String(item.title).trim(),
+      estimateMinutes: Number.isFinite(est) && est > 0 ? Math.round(est) : 60,
+      doneWhen: String(item.doneWhen ?? ''),
+      status: 'todo',
+      ...(item.targetDate ? { targetDate: item.targetDate } : {})
+    }
+  })
+  const restoredMilestones = prevMs.filter(
+    (m) => m.status === 'done' && !pair.claimed.has(asItems[prevMs.indexOf(m)])
+  )
+  const milestones = [...merged]
+  for (const m of restoredMilestones) {
+    milestones.splice(Math.min(prevMs.indexOf(m), milestones.length), 0, { ...m })
+  }
+  const curIdx = milestones.findIndex((m) => m.status !== 'done')
+  const finalMs = milestones.map((m, i) =>
+    m.status === 'done'
+      ? m
+      : { ...m, status: i === curIdx ? ('active' as const) : ('todo' as const) }
+  )
+  const validIds = new Set(finalMs.map((m) => m.id))
+  const steps = mergeChecklist(
+    previous,
+    {
+      ...incoming,
+      subtasks: (incoming.subtasks ?? []).map((s) => {
+        const mapped = s.milestoneId != null ? idMap.get(String(s.milestoneId)) : undefined
+        const mid =
+          mapped ?? (s.milestoneId && validIds.has(s.milestoneId) ? s.milestoneId : undefined)
+        return { ...s, milestoneId: mid ?? (curIdx >= 0 ? finalMs[curIdx].id : undefined) }
+      })
+    },
+    options
+  )
+  return { ...steps, milestones: finalMs, restoredMilestones, milestoneIdMap: idMap }
 }
 
 /**
