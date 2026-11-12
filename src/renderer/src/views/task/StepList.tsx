@@ -11,13 +11,19 @@ interface StepListProps {
   onEdit: (id: string, title: string) => void
   onDelete: (id: string) => void
   onSplit?: (id: string) => void
-  onAdd: (title: string) => void
+  /** Omit to hide the add-step row (e.g. the 'earlier parts' list). */
+  onAdd?: (title: string) => void
+  /** Text shown when there are no steps; null hides it. */
+  emptyText?: string | null
 }
 
 export function AddStep({
   disabled,
   onAdd
-}: Pick<StepListProps, 'disabled' | 'onAdd'>): JSX.Element {
+}: {
+  disabled: boolean
+  onAdd: (title: string) => void
+}): JSX.Element {
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
   const ended = useRef(false)
@@ -103,15 +109,12 @@ export function StepList({
   onEdit,
   onDelete,
   onSplit,
-  onAdd
+  onAdd,
+  emptyText = 'No steps yet. Add a step or ask the coach to adjust this plan.'
 }: StepListProps): JSX.Element {
   return (
     <div className="task-tracks min-w-0">
-      {!items.length && (
-        <p className="py-4 text-sm text-fg-2">
-          No steps yet. Add a step or ask the coach to adjust this plan.
-        </p>
-      )}
+      {!items.length && emptyText && <p className="py-4 text-sm text-fg-2">{emptyText}</p>}
       <ol aria-label="Steps in plan order">
         {items.map((item, index) => (
           <StepRow
@@ -126,7 +129,7 @@ export function StepList({
           />
         ))}
       </ol>
-      <AddStep disabled={disabled} onAdd={onAdd} />
+      {onAdd && <AddStep disabled={disabled} onAdd={onAdd} />}
     </div>
   )
 }

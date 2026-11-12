@@ -5,6 +5,7 @@ import { completeSubtask } from '../lib/completion'
 import { dayLabel, parseLocalDate } from '../lib/dates'
 import { focusTimer, useFocusTimer } from '../lib/focusTimer'
 import { queueKey, queueStore, selectQueue, useQueue } from '../lib/queue'
+import { whatNextStore } from '../lib/whatNextStore'
 import {
   Button,
   Cover,
@@ -77,6 +78,7 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
     setError('')
     setNotice('')
     const running = focusTimer.getSnapshot().running
+    whatNextStore.noteDone(current)
     try {
       await completeSubtask(current, {
         onCompleted: () => {
@@ -260,7 +262,11 @@ export function FocusMode({ focus, onExit, onOpenProject }: FocusModeProps): JSX
               <div className="flex min-w-0 items-center gap-5 sm:gap-6">
                 <Cover projectId={current.projectId} name={current.projectName} size={96} />
                 <p className="min-w-0 text-lg font-semibold break-words text-fg-2">
-                  {current.taskTitle} · {current.projectName}
+                  {current.taskTitle}
+                  {current.milestoneIndex && current.milestoneCount
+                    ? ` · Part ${current.milestoneIndex} of ${current.milestoneCount}`
+                    : ''}{' '}
+                  · {current.projectName}
                 </p>
               </div>
 

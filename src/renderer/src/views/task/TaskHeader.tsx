@@ -4,10 +4,14 @@ import type { ProjectTask } from 'src/common/types'
 import { deadlineLabel, parseLocalDate } from '../../lib/dates'
 import { Button, DateInput, Menu } from '../../ui'
 import { Burndown } from './Burndown'
+import { OpenInObsidian } from '../../components/OpenInObsidian'
 import { burndownData } from './burndownData'
+import { hasMilestones, taskProgress } from '../../../../common/milestones'
 
 interface TaskHeaderProps {
   task: ProjectTask
+  /** The item id, for Open in Obsidian (hidden while vault notes are off). */
+  projectId?: string
   projectName: string
   disabled: boolean
   onBack: () => void
@@ -23,6 +27,7 @@ interface TaskHeaderProps {
 
 export function TaskHeader({
   task,
+  projectId,
   projectName,
   disabled,
   onBack,
@@ -47,8 +52,16 @@ export function TaskHeader({
   }, [editing, disabled])
   const items = [...task.subtasks, ...(task.prerequisites ?? [])]
   const done = items.filter((item) => item.isCompleted).length
-  const percent = items.length ? (done / items.length) * 100 : 0
-  const burn = burndownData(task.subtasks, task.createdAt, task.deadline)
+  const twoLevel = hasMilestones(task)
+  // Two-level plans measure the whole job in minutes, not just the steps written so far.
+  const percent = twoLevel ? taskProgress(task) : items.length ? (done / items.length) * 100 : 0
+  const burn = burndownData(
+    task.subtasks,
+    task.createdAt,
+    task.deadline,
+    undefined,
+    twoLevel && task.deadlineKind !== 'none' ? task.milestones : undefined
+  )
   const commit = (): void => {
     if (ended.current) return
     ended.current = true
@@ -69,6 +82,7 @@ export function TaskHeader({
           <span className="truncate">{projectName}</span>
         </Button>
         <div className="flex shrink-0 items-center gap-2">
+          {projectId && <OpenInObsidian itemId={projectId} taskId={task.id} disabled={disabled} />}
           <Button
             variant="ghost"
             size="sm"
