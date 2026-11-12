@@ -43,11 +43,21 @@ export function buildGuardConfig(input: {
   ]
   const readable =
     vault.valid && vault.path && !isTooBroad(vault.path, home) ? path.resolve(vault.path) : null
+  // Vault-notes write gate (Phase 4): the setting is on, the vault was saved
+  // in settings (an auto-detected vault never gets writes) and it is the
+  // readable vault (so it has .obsidian). The guard adds the symlink check.
+  const appVaultWrite =
+    settings.vaultNotes === true &&
+    vault.source === 'settings' &&
+    readable !== null &&
+    path.isAbsolute(configured) &&
+    path.resolve(configured) === readable
   return {
     sourceRoots: discoverRoots(settings, home).map((r) => r.path),
     vaultRoots: [...new Set(denyLife.map((p) => path.resolve(p)))],
     readableVault: readable,
     writableRoots: input.writableRoots,
+    appVaultWrite,
     lifeAllowlist: LIFE_ALLOWLIST
   }
 }

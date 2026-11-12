@@ -393,7 +393,7 @@ describe('case handling, reads, writes, logging', () => {
     expect(g.check(path.join(vault, 'LIFE'))).toEqual({ ok: false, reason: 'life' })
   })
 
-  it('canWrite denies source roots and vault, allows FlowState root', () => {
+  it('canWrite denies source roots and vault (FocusForge too when appVaultWrite is unset), allows FlowState root', () => {
     const g = guard()
     expect(g.canWrite(path.join(flow, 'system', 'discovery.json'))).toBe(true)
     expect(g.canWrite(path.join(uni, 'course1', 'x.md'))).toBe(false)
@@ -401,6 +401,108 @@ describe('case handling, reads, writes, logging', () => {
     expect(g.canWrite(path.join(vault, 'Life', 'x.md'))).toBe(false)
     expect(g.canWrite(path.join(outside, 'x'))).toBe(false)
     expect(g.canWrite('relative')).toBe(false)
+  })
+
+  it('canWrite allows vault FocusForge/** when appVaultWrite', () => {
+    const g = guard({ appVaultWrite: true })
+    expect(g.appVaultWritable()).toBe(true)
+    expect(guard().appVaultWritable()).toBe(false)
+    const app = path.join(vault, 'FocusForge')
+    expect(g.canWrite(app)).toBe(true)
+    expect(g.canWrite(path.join(app, 'Learning', 'Thesis', 'Thesis.md'))).toBe(true)
+    expect(g.canWrite(path.join(app, '.tmp.nosync', 'x.tmp'))).toBe(true)
+    expect(g.canWrite(path.join(app, 'New', 'Deep', 'missing.md'))).toBe(true)
+    expect(g.canWrite(path.join(vault, 'focusforge', 'x.md'))).toBe(true) // APFS folds case
+    expect(g.canWrite(path.join(flow, 'system', 'x.json'))).toBe(true)
+    expect(
+      guard({ appVaultWrite: true, readableVault: null }).canWrite(path.join(app, 'x.md'))
+    ).toBe(false)
+  })
+
+  it('canWrite allows FocusForge/Life/** but denies vault Life/** and life/ LIFE/ "Life 2"', () => {
+    const g = guard({ appVaultWrite: true })
+    expect(g.canWrite(path.join(vault, 'FocusForge', 'Life', 'Reading', 'Reading.md'))).toBe(true)
+    for (const life of ['Life', 'life', 'LIFE', 'Life 2']) {
+      expect(g.canWrite(path.join(vault, life))).toBe(false)
+      expect(g.canWrite(path.join(vault, life, 'canary.md'))).toBe(false)
+      expect(g.canWrite(path.join(vault, life, 'FocusForge', 'x.md'))).toBe(false)
+    }
+    expect(g.canWrite(path.join(uni, 'linked-life', 'x.md'))).toBe(false)
+  })
+
+  it('canWrite denies vault root, vault/Learning/x.md, vault/.obsidian when appVaultWrite', () => {
+    const g = guard({ appVaultWrite: true })
+    expect(g.canWrite(vault)).toBe(false)
+    expect(g.canWrite(path.join(vault, 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(vault, 'Learning', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(vault, '.obsidian', 'app.json'))).toBe(false)
+    expect(g.canWrite(path.join(vault, '.trash', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(vault, 'FocusForge 2', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(vault, 'FocusForgeX.md'))).toBe(false)
+    expect(g.canWrite(path.join(uni, 'course1', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(outside, 'vaultlink', 'Learning', 'x.md'))).toBe(false)
+  })
+
+  it('canWrite denies when vault FocusForge is a symlink (to uni or to Life)', () => {
+    for (const target of ['uni', 'life']) {
+      const v = path.join(tmp, `sym-vault-${target}`)
+      write(path.join(v, '.obsidian', 'app.json'), '{}')
+      write(path.join(v, 'Life', 'canary.md'), 'CANARY-LIFE')
+      fs.symlinkSync(target === 'uni' ? uni : path.join(v, 'Life'), path.join(v, 'FocusForge'))
+      const g = guard({ vaultRoots: [vault, v], readableVault: v, appVaultWrite: true })
+      expect(g.appVaultWritable()).toBe(false)
+      expect(g.canWrite(path.join(v, 'FocusForge'))).toBe(false)
+      expect(g.canWrite(path.join(v, 'FocusForge', 'x.md'))).toBe(false)
+      expect(g.canWrite(path.join(v, 'FocusForge', 'course1', 'notes.md'))).toBe(false)
+      expect(fs.readFileSync(path.join(v, 'Life', 'canary.md'), 'utf8')).toBe('CANARY-LIFE')
+    }
+  })
+
+  it('canWrite denies FocusForge/sub symlinked to a source root or to Life', () => {
+    const v = path.join(tmp, 'sub-link-vault')
+    write(path.join(v, '.obsidian', 'app.json'), '{}')
+    write(path.join(v, 'Life', 'canary.md'), 'CANARY-LIFE')
+    write(path.join(v, 'Learning', 'x.md'))
+    fs.mkdirSync(path.join(v, 'FocusForge'))
+    fs.symlinkSync(uni, path.join(v, 'FocusForge', 'to-uni'))
+    fs.symlinkSync(path.join(v, 'Life'), path.join(v, 'FocusForge', 'to-life'))
+    fs.symlinkSync(path.join(v, 'Learning'), path.join(v, 'FocusForge', 'to-learning'))
+    fs.symlinkSync(path.join(v, 'Life', 'canary.md'), path.join(v, 'FocusForge', 'note.md'))
+    const g = guard({ vaultRoots: [vault, v], readableVault: v, appVaultWrite: true })
+    expect(g.canWrite(path.join(v, 'FocusForge', 'ok.md'))).toBe(true)
+    expect(g.canWrite(path.join(v, 'FocusForge', 'to-uni', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(v, 'FocusForge', 'to-life', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(v, 'FocusForge', 'to-life', 'canary.md'))).toBe(false)
+    expect(g.canWrite(path.join(v, 'FocusForge', 'to-learning', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(v, 'FocusForge', 'note.md'))).toBe(false)
+  })
+
+  it('canWrite denies ../ traversal out of FocusForge', () => {
+    const g = guard({ appVaultWrite: true })
+    const app = path.join(vault, 'FocusForge')
+    expect(g.canWrite(`${app}/../Learning/x.md`)).toBe(false)
+    expect(g.canWrite(`${app}/../Life/canary.md`)).toBe(false)
+    expect(g.canWrite(`${app}/Learning/../../x.md`)).toBe(false)
+    expect(g.canWrite(`${app}/../../uni/x.md`)).toBe(false)
+    expect(g.canWrite(`${app}/a/../b.md`)).toBe(true)
+    expect(g.canWrite(`${app}/x\0.md`)).toBe(false)
+  })
+
+  it("canWrite denies other obsidian.json vaults' FocusForge", () => {
+    const other = path.join(tmp, 'other-vault')
+    write(path.join(other, '.obsidian', 'app.json'), '{}')
+    write(path.join(other, 'FocusForge', 'x.md'))
+    const g = guard({ vaultRoots: [vault, other], appVaultWrite: true })
+    expect(g.canWrite(path.join(other, 'FocusForge', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(other, 'FocusForge'))).toBe(false)
+    expect(g.canWrite(path.join(projects, 'notes-vault', 'FocusForge', 'x.md'))).toBe(false)
+    expect(g.canWrite(path.join(vault, 'FocusForge', 'x.md'))).toBe(true)
+  })
+
+  it('canWrite denies FocusForge when the vault sits inside a source root', () => {
+    const v = path.join(projects, 'notes-vault')
+    const g = guard({ vaultRoots: [vault, v], readableVault: v, appVaultWrite: true })
+    expect(g.canWrite(path.join(v, 'FocusForge', 'x.md'))).toBe(false)
   })
 
   it('readTextPrefix reads readable files only and caps bytes', async () => {
@@ -440,5 +542,46 @@ describe('case handling, reads, writes, logging', () => {
     expect(expandHome('/abs', '/h')).toBe('/abs')
     expect(foldPath('/A/b/', true)).toBe('/a/b')
     expect(foldPath('/A/b/../C', false)).toBe('/A/C')
+  })
+})
+
+describe('head/tail and byte reads', () => {
+  it('readHeadTail returns head and tail of a large file and flags truncation', async () => {
+    const g = guard()
+    const big = path.join(uni, 'course1', 'big.md')
+    write(big, 'H'.repeat(100) + 'M'.repeat(1000) + 'T'.repeat(50))
+    const r = await g.readHeadTail(big, 100, 50)
+    expect(r?.truncated).toBe(true)
+    expect(r?.size).toBe(1150)
+    expect(r?.text.startsWith('H'.repeat(100) + '\n[… 1,000 bytes omitted …]\n')).toBe(true)
+    expect(r?.text.endsWith('T'.repeat(50))).toBe(true)
+    expect(r?.text.includes('M')).toBe(false)
+    const small = await g.readHeadTail(path.join(uni, 'course1', 'notes.md'), 100, 50)
+    expect(small).toEqual({ text: 'x', truncated: false, size: 1 })
+  })
+
+  it('readHeadTail and readBytes refuse Life, secrets and symlinks', async () => {
+    const log: string[] = []
+    const g = guard({ fsImpl: tracingFs(log) })
+    for (const p of [
+      path.join(vault, 'Life', 'canary.md'),
+      path.join(uni, 'SERVICE PAT.rtf'),
+      path.join(projects, '.env'),
+      path.join(uni, 'linked-life', 'canary.md'),
+      path.join(vault, 'Learning', 'escape.txt')
+    ]) {
+      expect(await g.readHeadTail(p, 10, 10)).toBeNull()
+      expect(await g.readBytes(p, 1000)).toBeNull()
+    }
+    expect(log.some((p) => underLife(p) && p.includes('canary'))).toBe(false)
+  })
+
+  it('readBytes returns null above maxBytes', async () => {
+    const g = guard()
+    const f = path.join(uni, 'course1', 'bytes.bin')
+    write(f, 'abcdef')
+    expect((await g.readBytes(f, 6))?.toString()).toBe('abcdef')
+    expect(await g.readBytes(f, 5)).toBeNull()
+    expect(await g.readBytes(uni, 100)).toBeNull()
   })
 })

@@ -7,6 +7,7 @@ vi.mock('electron', () => ({ app: { getPath: () => '/nonexistent-flowstate-test'
 import { detectVault, isVaultDir, readObsidianVaults } from './vault'
 import { buildGuardConfig, discoverRoots } from './config'
 import { normalizeSettings } from '../settings'
+import type { VaultInfo } from '../../common/discovery'
 
 let tmp: string
 let appData: string
@@ -126,6 +127,24 @@ describe('vault detection', () => {
 })
 
 describe('guard config', () => {
+  it('turns on vault writes only for a saved vault with vaultNotes on', () => {
+    const base = {
+      obsidianVaults: [],
+      home: '/h',
+      writableRoots: ['/h/Documents/FlowState']
+    }
+    const saved: VaultInfo = { path: '/v/main', source: 'settings', valid: true, others: [] }
+    const gate = (s: Record<string, unknown>, vault = saved): boolean | undefined =>
+      buildGuardConfig({ ...base, settings: normalizeSettings(s), vault }).appVaultWrite
+    expect(gate({ vaultPath: '/v/main' })).toBe(true)
+    expect(gate({ vaultPath: '/v/main', vaultNotes: false })).toBe(false)
+    // auto-detected (not saved) vault never gets writes
+    expect(gate({ vaultPath: '' }, { ...saved, source: 'obsidian' })).toBe(false)
+    // saved path is no longer a vault (no .obsidian)
+    expect(gate({ vaultPath: '/v/main' }, { ...saved, valid: false })).toBe(false)
+    expect(gate({ vaultPath: '~' }, { ...saved, path: '/h' })).toBe(false)
+  })
+
   it('denies Life in every known vault but reads only the chosen one', () => {
     const settings = normalizeSettings({
       vaultPath: '',
