@@ -44,6 +44,29 @@ describe('writeFileAtomic', () => {
     expect(fs.readFileSync(target, 'utf-8')).toBe('original')
     expect(fs.readdirSync(path.dirname(target))).toEqual(['file.txt'])
   })
+
+  it('puts the temp file in tempDir and aborts cleanly when beforeRename says no', async () => {
+    const target = path.join(ROOT, 'c', 'note.md')
+    const tempDir = path.join(ROOT, 'c', '.tmp.nosync')
+    let seenTemp: string[] = []
+    const result = await writeFileAtomic(target, 'one', {
+      tempDir,
+      beforeRename: async () => {
+        seenTemp = fs.readdirSync(tempDir)
+        return true
+      }
+    })
+    expect(result).toBe('written')
+    expect(seenTemp).toHaveLength(1)
+    expect(seenTemp[0]).toMatch(/^ff-\d+\.[0-9a-f]{8}\.tmp$/)
+    expect(fs.readFileSync(target, 'utf-8')).toBe('one')
+    expect(fs.readdirSync(path.dirname(target)).sort()).toEqual(['.tmp.nosync', 'note.md'])
+    expect(await writeFileAtomic(target, 'two', { tempDir, beforeRename: async () => false })).toBe(
+      'aborted'
+    )
+    expect(fs.readFileSync(target, 'utf-8')).toBe('one')
+    expect(fs.readdirSync(tempDir)).toEqual([])
+  })
 })
 
 describe('withLock', () => {
