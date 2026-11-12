@@ -1,0 +1,14 @@
+{
+  "label": "math1951",
+  "item": {
+    "id": "math1951",
+    "name": "MATH1951",
+    "category": "Learning",
+    "kind": "deadline"
+  },
+  "modified": {
+    "CONTEXT.md": -1,
+    "syllabus.md": -40,
+    "past-papers/README.md": -10
+  }
+}

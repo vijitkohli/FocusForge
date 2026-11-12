@@ -1,0 +1,7 @@
+# Chapter 2 outline (target ~6000 words)
+2.1 Federated learning fundamentals (FedAvg, FedProx, SCAFFOLD) - ~1200 words
+2.2 Statistical heterogeneity (non-IID, label/feature skew, personalisation) - ~1300 words
+2.3 Privacy and security (secure aggregation, DP, gradient leakage attacks) - ~1200 words
+2.4 FL in medical imaging (deployments, segmentation, MRI) - ~1500 words
+2.5 Gaps and how this thesis addresses them - ~800 words
+Also: intro paragraph, summary table of methods, references (IEEE style).

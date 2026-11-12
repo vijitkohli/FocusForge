@@ -1,0 +1,60 @@
+{
+  "goal": "Finish my part of SENG2999 Iteration 2 (/channels routes, tests, report section).",
+  "currentState": "### Where things stand\nchannelsCreate and channelsList done and tested; four functions, HTTP wrappers and report section remain.",
+  "openItems": [
+    {
+      "text": "channelsListAll, channelDetails, channelJoin, channelInvite",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "seng2999/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "HTTP wrappers for /channels",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "seng2999/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "300-word report section",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "seng2999/iteration2/spec.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Iteration 2",
+      "date": "{{d+7}}",
+      "confidence": "confirmed",
+      "kind": "assignment",
+      "sources": [
+        {
+          "label": "seng2999/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [
+    {
+      "date": "{{d-2}}",
+      "text": "channelsList implemented and tested",
+      "sources": [
+        {
+          "label": "seng2999/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "candidateTasks": [],
+  "constraints": [],
+  "suggestedKind": "deadline"
+}

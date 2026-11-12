@@ -1,0 +1,38 @@
+{
+  "goal": "Build a fun personal portfolio site and get it online.",
+  "currentState": "### Where things stand\nHome and About work locally; projects page empty; not deployed.",
+  "openItems": [
+    {
+      "text": "Add 3 project cards",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "portfolio-site/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "Dark-mode toggle",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "portfolio-site/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "Deploy",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "portfolio-site/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [],
+  "recentProgress": [],
+  "candidateTasks": [],
+  "constraints": [],
+  "suggestedKind": "passion"
+}

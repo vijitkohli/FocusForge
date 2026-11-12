@@ -1,0 +1,12 @@
+{
+  "label": "vault-only",
+  "item": {
+    "id": "photo",
+    "name": "Photography",
+    "category": "Life",
+    "kind": "passion"
+  },
+  "modified": {
+    "vault/Projects/Photography.md": -20
+  }
+}

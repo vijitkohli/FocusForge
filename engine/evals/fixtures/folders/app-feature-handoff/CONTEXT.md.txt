@@ -1,0 +1,15 @@
+# Tomato Desk (synthetic Electron pomodoro app)
+
+## What this is
+A desktop pomodoro timer (Electron + React + TypeScript). Side project.
+
+## Current state
+- Timer, sessions history and weekly stats work. 61 tests pass (`npm test`).
+- Next feature: **session tags** (tag each session with a project, filter stats by tag). Plan in `FEATURE_PLAN.md`.
+
+## Next steps
+1. Add `tags?: string[]` to `Session` in `src/common/session.ts`.
+2. Tag picker in the stop dialog.
+3. Filter in Stats.
+
+Last updated: {{d-1}}

@@ -1,0 +1,23 @@
+# Handoff
+
+## Architecture
+Main process owns timers and storage; renderer is React with Tailwind. IPC through `window.api` (preload).
+
+## Key files
+- `src/main/timer/TimerService.ts - owns the pomodoro countdown; emits tick events`
+- `src/main/timer/TimerService.test.ts - 14 tests`
+- `src/main/store/SessionStore.ts - persists finished sessions to sessions.json (atomic writes)`
+- `src/main/ipc/timerHandlers.ts - IPC for start/pause/stop`
+- `src/renderer/views/Stats.tsx - weekly chart (bar chart of focus minutes)`
+- `src/renderer/components/TimerRing.tsx - the circular progress ring`
+- `src/renderer/lib/format.ts - formatDuration(), dayLabel()`
+- `src/common/session.ts - Session type, sessionMinutes()`
+
+## Conventions
+- Every IPC handler validates its input with a hand-written guard (no zod).
+- Tests use vitest; run `npm test` and `npm run typecheck` before each commit.
+- Dates use local YYYY-MM-DD helpers in `src/renderer/lib/format.ts`.
+
+## Known issues
+- Stats chart does not handle weeks with zero sessions (renders NaN heights).
+- `SessionStore` migration from v1 files is untested.

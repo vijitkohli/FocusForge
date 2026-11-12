@@ -1,0 +1,96 @@
+{
+  "goal": "Finish DATA9001 Assignment 3 (movie data analysis notebook, 15%) and prepare for the final exam.",
+  "currentState": "### Overview\nPostgrad data services course. Assignment 3 is a notebook analysis of movies.csv with four questions (cleaning, EDA, regression, open question).\n\n### Where things stand\nLabs 1-6 done; lectures to Week 8. Assignment 3 not started beyond downloading the starter notebook and dataset.\n\n### What's next\nRead the spec, load the data, start Q1.",
+  "openItems": [
+    {
+      "text": "Read the Assignment 3 spec end to end",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "data9001/todo.md"
+        }
+      ]
+    },
+    {
+      "text": "Ask on the forum whether Q4 can use an external dataset",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "data9001/todo.md"
+        }
+      ]
+    },
+    {
+      "text": "Revise the week 7 regression lecture before Q3",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "data9001/todo.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Assignment 3",
+      "date": "{{d+14}}",
+      "confidence": "confirmed",
+      "weight": 15,
+      "kind": "assignment",
+      "sources": [
+        {
+          "label": "data9001/ass3/spec.md"
+        }
+      ]
+    },
+    {
+      "what": "Final exam",
+      "date": null,
+      "when": "Week 13 (exam timetable)",
+      "confidence": "tentative",
+      "weight": 40,
+      "kind": "exam",
+      "sources": [
+        {
+          "label": "data9001/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [
+    {
+      "date": "{{d-2}}",
+      "text": "Downloaded the starter notebook and movies.csv",
+      "sources": [
+        {
+          "label": "data9001/todo.md"
+        }
+      ]
+    }
+  ],
+  "candidateTasks": [
+    {
+      "id": "gap-6c1f2a9d0e",
+      "title": "Look up the final exam date in the exam timetable",
+      "minutes": 5,
+      "gapKind": "unknown",
+      "why": "Exam date not recorded",
+      "sources": [
+        {
+          "label": "data9001/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "text": "Generative AI may not be used to write, debug or explain any assignment code (course integrity policy).",
+      "sources": [
+        {
+          "label": "data9001/ass3/spec.md"
+        }
+      ]
+    }
+  ],
+  "suggestedKind": "deadline"
+}

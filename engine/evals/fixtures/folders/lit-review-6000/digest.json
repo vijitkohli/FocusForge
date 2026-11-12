@@ -1,0 +1,51 @@
+{
+  "goal": "Write the ~6000-word literature review chapter (Chapter 2) on federated learning for medical imaging.",
+  "currentState": "### Where things stand\n25-paper reading list; 6 read properly. Outline with 5 sections drafted; no prose yet.",
+  "openItems": [
+    {
+      "text": "Read the remaining 19 papers",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "honours-thesis/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "Write sections 2.1-2.5",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "honours-thesis/litreview/outline.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Lit review full draft to supervisor",
+      "date": "{{d+21}}",
+      "confidence": "confirmed",
+      "kind": "report",
+      "sources": [
+        {
+          "label": "honours-thesis/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [
+    {
+      "date": "{{d-3}}",
+      "text": "Chapter outline drafted",
+      "sources": [
+        {
+          "label": "honours-thesis/litreview/outline.md"
+        }
+      ]
+    }
+  ],
+  "candidateTasks": [],
+  "constraints": [],
+  "suggestedKind": "deadline"
+}

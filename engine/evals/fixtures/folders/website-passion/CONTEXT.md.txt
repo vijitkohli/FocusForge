@@ -1,0 +1,16 @@
+# Portfolio site (synthetic)
+
+## What this is
+Personal site built with Astro. Just for fun and for showing projects.
+
+## Current state
+- Home page and About page work locally (`npm run dev`).
+- `src/pages/projects.astro` exists but is an empty list.
+- No deployment yet.
+
+## Next steps
+1. Add 3 project cards to `src/pages/projects.astro` (pull from `src/data/projects.json`).
+2. Try a dark-mode toggle.
+3. Deploy to a free static host.
+
+Last updated: {{d-6}}

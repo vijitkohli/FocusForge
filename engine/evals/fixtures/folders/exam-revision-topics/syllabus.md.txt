@@ -1,0 +1,4 @@
+# MATH1951 topics examined
+Algebra: 1 Vectors and lines/planes; 2 Systems of equations and Gaussian elimination; 3 Matrices and inverses; 4 Determinants; 5 Eigenvalues and eigenvectors; 6 Diagonalisation.
+Calculus: 7 Limits and continuity; 8 Derivatives and applications; 9 Integration techniques; 10 Taylor polynomials and series; 11 First-order ODEs.
+Exam: 2 hours, 6 long-answer questions, roughly one per two topics.

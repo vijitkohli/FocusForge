@@ -1,0 +1,16 @@
+# CS1911 Assignment 2 (synthetic)
+
+## Current state
+- Stage 1 done (map prints, input validation) - autotests pass.
+- Stage 2 done (movement, gems, stats) - autotests pass.
+- Stage 3 not started. Stage 4 not started.
+- Style: functions in Stage 2 are too long (`process_command` is 90 lines) - needs splitting before submission.
+
+## Next steps
+1. Sketch `struct rock` and the linked list for falling rocks.
+2. Lava tiles + lives.
+
+## Deadlines
+- [ ] Assignment 2 [due:: {{d+8}}]
+
+Last updated: {{d-1}} - Stage 2 autotests passing.

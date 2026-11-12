@@ -1,0 +1,61 @@
+{
+  "goal": "Run and write up the thesis experiments on guarding LLM agents against unsafe tool calls.",
+  "currentState": "### Where things stand\nPilot 3/5 tasks pass; 2 crash on tool timeouts (no retry in call_tool). Guard blocks 41/50 unsafe calls.",
+  "openItems": [
+    {
+      "text": "Fix tool-timeout crash in run_pilot.py",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "thesis-experiments/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "Re-run pilot with all 5 tasks",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "thesis-experiments/CONTEXT.md"
+        }
+      ]
+    },
+    {
+      "text": "Add 3 new hard tasks",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "thesis-experiments/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [],
+  "recentProgress": [
+    {
+      "date": "{{d-1}}",
+      "text": "Logged sandbox timing in call_tool",
+      "sources": [
+        {
+          "label": "git:thesis-experiments"
+        }
+      ]
+    }
+  ],
+  "candidateTasks": [
+    {
+      "id": "gap-9a8b7c6d5e",
+      "title": "Ask the supervisor which second benchmark to use",
+      "minutes": 5,
+      "gapKind": "unknown",
+      "why": "Open question",
+      "sources": [
+        {
+          "label": "thesis-experiments/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "constraints": [],
+  "suggestedKind": "ongoing"
+}

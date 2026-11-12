@@ -1,0 +1,9 @@
+# SENG2999 group project (synthetic)
+
+## Current state
+- Iteration 2 of the group project (team of 4, a REST API in TypeScript). My part: the `/channels` routes.
+- DONE: `channelsCreate` implemented and tested; `channelsList` implemented and tested.
+- NOT DONE: `channelsListAll`, `channelDetails`, `channelJoin`, `channelInvite`; HTTP wrappers for my routes; my section of the iteration report.
+
+## Deadlines
+- [ ] Iteration 2 [due:: {{d+7}}]

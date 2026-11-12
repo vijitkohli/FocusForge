@@ -1,0 +1,23 @@
+# DATA9001 (synthetic course folder)
+
+## What this is
+Postgrad data services course. Assessments: Assignment 3 (15%, notebook-based analysis), final exam (40%).
+
+## Current state
+- Lectures watched up to Week 8. Labs 1-6 done.
+- Assignment 3 not started beyond downloading the starter notebook `ass3/ass3.ipynb` and the dataset `movies.csv`.
+- Python, pandas and Jupyter already installed and working (used in labs).
+
+## Next steps
+1. Read the Assignment 3 spec end to end (`ass3/spec.md`).
+2. Load `movies.csv` in `ass3.ipynb` and check the columns.
+3. Start Q1 (cleaning).
+
+## Deadlines
+- [ ] Assignment 3 [due:: {{d+14}}]
+- [ ] Final exam (date in the exam timetable, Week 13)
+
+## Course policy
+AI tools may NOT be used to write, fix or explain assignment code. Students must write all code themselves (course academic integrity policy).
+
+Last updated: {{d-1}} - added Assignment 3 status.

@@ -1,0 +1,12 @@
+# Career (synthetic)
+
+## Current state
+- Had a coffee chat with a senior engineer (Priya) from a fintech last Thursday; she offered to refer me for the 2027 graduate program.
+- She asked me to email my CV and the job link.
+- CV is up to date (exported PDF in Downloads).
+
+## Next steps
+1. Send Priya the thank-you + referral email with the CV and the job link.
+
+## Deadlines
+- [ ] Referral email to Priya [due:: {{d+1}}]

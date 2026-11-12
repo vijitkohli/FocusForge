@@ -1,0 +1,17 @@
+# CS1911 Programming Fundamentals (synthetic)
+
+## What this is
+First-year C course. Assignment 2 "Cave Explorer" is worth 20%.
+
+## Current state
+- Labs up to Week 6 done. Comfortable with arrays and structs; linked lists are shaky.
+- Assignment 2: starter code `cave_explorer.c` downloaded, nothing written yet.
+
+## Next steps
+1. Read the Assignment 2 spec (`ass2/spec.md`).
+2. Get Stage 1 printing the map.
+
+## Deadlines
+- [ ] Assignment 2 [due:: {{d+16}}]
+
+Last updated: {{d-2}}

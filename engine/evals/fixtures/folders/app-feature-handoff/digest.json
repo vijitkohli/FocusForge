@@ -1,0 +1,39 @@
+{
+  "goal": "Ship session tags in Tomato Desk (tag sessions, filter stats by tag).",
+  "currentState": "### Where things stand\nTimer, history and weekly stats work; 61 tests. Session tags planned in FEATURE_PLAN.md.",
+  "openItems": [
+    {
+      "text": "Session tags feature (6 steps in FEATURE_PLAN.md)",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "tomato-desk/FEATURE_PLAN.md"
+        }
+      ]
+    },
+    {
+      "text": "Stats chart NaN on zero-session weeks",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "tomato-desk/HANDOFF.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [],
+  "recentProgress": [
+    {
+      "date": "{{d-1}}",
+      "text": "Weekly stats chart",
+      "sources": [
+        {
+          "label": "git:tomato-desk"
+        }
+      ]
+    }
+  ],
+  "candidateTasks": [],
+  "constraints": [],
+  "suggestedKind": "passion"
+}

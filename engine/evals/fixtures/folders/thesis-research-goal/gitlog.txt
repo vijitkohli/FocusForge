@@ -1,0 +1,11 @@
+{{d-1}} a17f3d2 log sandbox timing in call_tool
+    run_pilot.py
+{{d-4}} 5c02be9 add guard scorer and pilot summary table
+    guard/scorer.py
+    analysis/plot_results.ipynb
+{{d-6}} e41b7a0 rule-based guard v1
+    guard/policy.py
+    tests/test_policy.py
+{{d-9}} 0d93c6f pilot harness
+    run_pilot.py
+    tasks/pilot/task_01.yaml

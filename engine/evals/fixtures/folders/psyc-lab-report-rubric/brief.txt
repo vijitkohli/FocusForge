@@ -1,0 +1,6 @@
+PSYC1777 Research Report (25%) - Brief
+Due: {{d+10}}, 5pm, via Turnitin. Length: 1500 words (+/-10%), excluding references and tables.
+
+Task: Write an APA 7 style research report on the class Stroop experiment (congruent vs incongruent reaction times, n = 212 class data, provided as stroop_class.csv with a summary output from the lab).
+Sections: Title page, Abstract (150 words), Introduction (~450 words, at least 6 peer-reviewed sources including Stroop 1935 and MacLeod 1991), Method (~300 words: participants, materials, procedure), Results (~250 words: paired-samples t-test with effect size, one APA-formatted figure), Discussion (~500 words: interpretation, limitations, future research), References (APA 7).
+The statistics output is provided; you do not need to run analyses yourself, but must report them correctly.

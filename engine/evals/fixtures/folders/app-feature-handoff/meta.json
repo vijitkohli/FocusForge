@@ -1,0 +1,15 @@
+{
+  "label": "tomato-desk",
+  "item": {
+    "id": "tomatodesk",
+    "name": "Tomato Desk",
+    "category": "Projects",
+    "kind": "passion"
+  },
+  "modified": {
+    "CONTEXT.md": -1,
+    "HANDOFF.md": -1,
+    "FEATURE_PLAN.md": -2,
+    "gitlog.txt": -1
+  }
+}

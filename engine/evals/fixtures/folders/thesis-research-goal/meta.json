@@ -1,0 +1,14 @@
+{
+  "label": "thesis-experiments",
+  "item": {
+    "id": "thesisc",
+    "name": "Thesis research",
+    "category": "Learning",
+    "kind": "ongoing"
+  },
+  "modified": {
+    "CONTEXT.md": -2,
+    "research/status.md": -1,
+    "gitlog.txt": -1
+  }
+}

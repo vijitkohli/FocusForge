@@ -1,0 +1,14 @@
+{
+  "label": "thesis",
+  "item": {
+    "id": "thesisb",
+    "name": "Thesis",
+    "category": "Learning",
+    "kind": "deadline"
+  },
+  "modified": {
+    "CONTEXT.md": -3,
+    "presentation/requirements.md": -20,
+    "vault/Learning/Thesis Hub/Thesis.md": -5
+  }
+}

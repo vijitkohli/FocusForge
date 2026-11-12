@@ -1,0 +1,4 @@
+# meeting {{d-1}}
+- I own: channelsListAll, channelDetails, channelJoin, channelInvite + HTTP wrappers for /channels.
+- Merge request for each function separately; teammate reviews within 24 h.
+- Report section due to the team 2 days before the deadline.

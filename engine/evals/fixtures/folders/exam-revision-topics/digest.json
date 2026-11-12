@@ -1,0 +1,42 @@
+{
+  "goal": "Pass the MATH1951 final exam.",
+  "currentState": "### Where things stand\nNot started revising. Weak: eigenvalues, Taylor series. 3 past papers available.",
+  "openItems": [
+    {
+      "text": "Revise 11 syllabus topics, focus on eigenvalues and Taylor series",
+      "status": "todo",
+      "sources": [
+        {
+          "label": "math1951/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "dueDates": [
+    {
+      "what": "Final exam",
+      "date": "{{d+12}}",
+      "confidence": "confirmed",
+      "weight": 50,
+      "kind": "exam",
+      "sources": [
+        {
+          "label": "math1951/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "recentProgress": [],
+  "candidateTasks": [],
+  "constraints": [
+    {
+      "text": "Closed book; one double-sided A4 formula sheet allowed.",
+      "sources": [
+        {
+          "label": "math1951/CONTEXT.md"
+        }
+      ]
+    }
+  ],
+  "suggestedKind": "deadline"
+}

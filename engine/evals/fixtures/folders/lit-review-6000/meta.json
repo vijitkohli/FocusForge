@@ -1,0 +1,14 @@
+{
+  "label": "honours-thesis",
+  "item": {
+    "id": "honours",
+    "name": "Honours thesis",
+    "category": "Learning",
+    "kind": "deadline"
+  },
+  "modified": {
+    "CONTEXT.md": -2,
+    "litreview/reading-list.md": -4,
+    "litreview/outline.md": -3
+  }
+}
