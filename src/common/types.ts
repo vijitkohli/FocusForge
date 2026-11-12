@@ -79,7 +79,39 @@ export interface Subtask {
   timeEstimate?: number // in minutes
   scheduledDate?: string // YYYY-MM-DD
   focusSeconds?: number // accumulated Focus-mode time on this step
+  gapId?: string // Phase 3: the digest candidate-task id this step came from (Loose ends)
+  milestoneId?: string // two-level plans: the milestone this step belongs to
 }
+
+/**
+ * Two-level plans (Phase 5): milestones cover the whole job with honest
+ * estimates; only the current milestone has micro-steps. Old tasks have no
+ * milestones and render exactly as before.
+ */
+export type MilestoneStatus = 'todo' | 'active' | 'done'
+
+export interface Milestone {
+  id: string
+  title: string
+  estimateMinutes: number
+  doneWhen: string
+  status: MilestoneStatus
+  targetDate?: string // YYYY-MM-DD
+  completedAt?: string // ISO; burndown and future effort learning
+  /** Did the last batch of steps cover the rest of this milestone? */
+  expanded?: 'partial' | 'full'
+  /** Σ focusSeconds/60 of its steps when done (seed for learning real durations). */
+  actualMinutes?: number
+}
+
+/** Where an auto-created task came from (digest deliverable or item goal). */
+export interface TaskOrigin {
+  kind: 'deliverable' | 'gap' | 'goal'
+  key: string
+  source: string
+}
+
+export type DeadlineKind = 'hard' | 'tentative' | 'none'
 
 /**
  * Prerequisite: something to learn / acquire / set up BEFORE the execution
@@ -103,6 +135,13 @@ export interface DecompositionResult {
   originalTask: string
   subtasks: Subtask[]
   prerequisites?: Prerequisite[]
+  // Two-level plans (plan/replan modes and the Coach twoLevel flag)
+  milestones?: Milestone[]
+  currentMilestoneId?: string
+  coversRest?: boolean
+  assumptions?: string[]
+  // Mutation replies: ids of open steps the user says are already done
+  completedIds?: string[]
 }
 
 /**
@@ -227,6 +266,16 @@ export interface ProjectTask {
   // (template included) shares `seriesId`.
   recurrence?: Recurrence
   seriesId?: string
+
+  // Phase 3: the per-item "Loose ends" task, owned by mergeLooseEnds (src/common/looseEnds.ts)
+  auto?: 'loose-ends'
+  // Two-level plans (Phase 5). Absent on old tasks.
+  milestones?: Milestone[]
+  origin?: TaskOrigin
+  deadlineKind?: DeadlineKind // absent = 'hard' (old tasks)
+  scope?: 'deliverable' | 'goal'
+  planAssumptions?: string[]
+  planIssues?: string[]
 }
 
 /**
@@ -244,6 +293,10 @@ export interface ProjectData {
   // load-modify-save paths send back the rev they loaded so a concurrent
   // write is detected instead of silently overwritten. Absent = 0.
   rev?: number
+  // Phase 3: every gap id ever added to Loose ends, so a deleted one never comes back
+  looseEndsSeen?: string[]
+  // Origin keys of auto-created tasks the user deleted; never re-created.
+  dismissedOrigins?: string[]
 }
 
 /** Result of the "Stuck?" split: the new steps that replaced the stuck one. */
@@ -313,4 +366,8 @@ export interface UpcomingSubtask {
   scheduledDate?: string
   deadline: string
   daysRemaining: number
+  // Two-level plans: "Part 2 of 5" in Focus
+  milestoneTitle?: string
+  milestoneIndex?: number // 1-based
+  milestoneCount?: number
 }
