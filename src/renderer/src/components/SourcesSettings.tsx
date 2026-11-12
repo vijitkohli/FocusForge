@@ -3,6 +3,7 @@ import { FolderSearch, ListChecks } from 'lucide-react'
 import type { VaultInfo } from 'src/common/discovery'
 import type { SourceRoot } from 'src/common/models'
 import { Button, Skeleton } from '../ui'
+import { VaultNotesSettings } from './VaultNotesSettings'
 
 interface SourcesSettingsProps {
   /** Opens the item approval screen (a fresh look through the folders). */
@@ -77,7 +78,7 @@ export function SourcesSettings({
       </h2>
       <p className="max-w-[72ch] text-sm leading-[1.55] text-fg-2">
         Where FocusForge looks for your courses and projects. It reads names and dates, never writes
-        here, and your vault&apos;s Life folder stays closed.
+        to your folders, and your vault&apos;s Life folder stays closed.
       </p>
       {loading ? (
         <div role="status" aria-label="Loading sources" aria-busy="true" className="space-y-3">
@@ -134,6 +135,7 @@ export function SourcesSettings({
               </Button>
             )}
           </div>
+          <VaultNotesSettings disabled={disabled} />
         </>
       )}
     </section>

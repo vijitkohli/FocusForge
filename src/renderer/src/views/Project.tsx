@@ -18,6 +18,9 @@ import type { NavigationProps } from '../shell/navigation'
 import { Button, Cover, EmptyState, Menu, Skeleton } from '../ui'
 import { ProjectNotesDrawer } from '../components/ProjectNotesDrawer'
 import { OutlineImportDrawer } from '../components/OutlineImportDrawer'
+import { SyncStatus } from '../components/SyncStatus'
+import { ItemSummary } from '../components/ItemSummary'
+import { OpenInObsidian } from '../components/OpenInObsidian'
 
 export interface ProjectProps extends NavigationProps {
   projectId: string
@@ -168,6 +171,7 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
                     {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} · {stepsLeft} steps left
                     {lastActive && ` · last active ${lastActive}`}
                   </p>
+                  <SyncStatus itemId={projectId} />
                   <div className="flex flex-wrap gap-2">
                     <Button variant="primary" leadingIcon={Plus} onClick={openCoach}>
                       New task with coach
@@ -178,6 +182,7 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
                     <Button leadingIcon={NotebookText} onClick={() => setNotesOpen(true)}>
                       Project notes
                     </Button>
+                    <OpenInObsidian itemId={projectId} />
                   </div>
                 </div>
               </header>
@@ -186,6 +191,7 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
                   {notice}
                 </p>
               )}
+              <ItemSummary itemId={projectId} />
               {tasks.length === 0 ? (
                 <EmptyState
                   icon={ListMusic}

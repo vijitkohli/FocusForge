@@ -26,6 +26,8 @@ export interface SourceHandlerDeps {
   fsManager: FileSystemManager
   /** Tells open windows to reload items (the existing 'tasks-changed' event). */
   notifyTasksChanged: () => void
+  /** After a settings change that alters what is readable/writable (vault notes re-check their gate). */
+  onAccessChanged?: () => void
 }
 
 /** `/Users/x/Vault` -> `~/Vault` (settings keep `~` unexpanded). */
@@ -38,7 +40,11 @@ function skippedMessage(skipped: string[]): string {
   return `I left out ${skipped.join(', ')} because FocusForge can't read ${skipped.length === 1 ? 'it' : 'them'}.`
 }
 
-export function registerSourceHandlers({ fsManager, notifyTasksChanged }: SourceHandlerDeps): void {
+export function registerSourceHandlers({
+  fsManager,
+  notifyTasksChanged,
+  onAccessChanged
+}: SourceHandlerDeps): void {
   const inflight = new Map<
     number,
     { controller: AbortController; promise: Promise<DiscoveryResult> }
@@ -128,6 +134,7 @@ export function registerSourceHandlers({ fsManager, notifyTasksChanged }: Source
       if (Object.keys(settingsPatch).length > 0) {
         await saveSettings(settingsPatch)
         invalidateGuard()
+        onAccessChanged?.()
       }
       notifyTasksChanged()
       const failed = applied.failed.length > 0
@@ -200,6 +207,7 @@ export function registerSourceHandlers({ fsManager, notifyTasksChanged }: Source
       }
       await saveSettings({ vaultPath: contractHome(chosen) })
       invalidateGuard()
+      onAccessChanged?.()
       return { vault: (await getSourceContext()).vault }
     }
   )
