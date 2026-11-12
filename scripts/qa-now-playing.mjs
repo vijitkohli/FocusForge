@@ -48,6 +48,8 @@ const underQa = (p) =>
     discoveryCompletedAt: current.discoveryCompletedAt || new Date().toISOString(),
     // Always overwritten: a copied value could point at real folders.
     vaultPath: `${fixtureHome}/Vault`,
+    // Vault notes are covered by qa-vault.mjs; keep the writer off here.
+    vaultNotes: false,
     sourceRoots: [
       { path: `${fixtureHome}/UNI`, category: 'Learning' },
       { path: `${fixtureHome}/Projects`, category: 'Projects' }
@@ -171,7 +173,7 @@ async function screenshot(name, width, height) {
     )
     assert.notEqual(hue, 'rgba(0, 0, 0, 0)', 'Project cover hue was pruned')
     const play = await evaluate(
-      `(() => {const r=document.querySelector('[aria-label="Play in Focus (Space)"]').getBoundingClientRect(); return {top:r.top,bottom:r.bottom,height:innerHeight}})()`
+      `(() => {const r=document.querySelector('[aria-label="Start in Focus (Space)"]').getBoundingClientRect(); return {top:r.top,bottom:r.bottom,height:innerHeight}})()`
     )
     if (width === 1440) {
       const bottom = await evaluate(
@@ -393,7 +395,43 @@ try {
     'Replan did not move every fixture step'
   )
   console.log('Verified carried-over count and re-plan persistence (16 steps).')
-  await click('Play in Focus (Space)')
+  assert.ok((await bodyText()).includes('What next?'), 'what next card missing')
+  assert.ok(await evaluate(`!!document.querySelector('[aria-label="Energy"]')`), 'energy chips missing')
+  assert.ok(
+    await evaluate(`!!document.querySelector('button[title="Not this (S)"]')`),
+    'Not this missing'
+  )
+  await click('Not this')
+  await waitFor(`document.body.innerText.includes('Skipped. Want to say why?')`, 'skip reasons')
+  await click('Bring it back')
+  assert.ok(!(await bodyText()).includes('Skipped. Want to say why?'), 'reasons row stayed open')
+  const opened = await evaluate(`(() => {
+    const el = [...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || '').startsWith('Options for'))
+    if (!el) return false
+    el.click()
+    return true
+  })()`)
+  assert.ok(opened, 'up next options missing')
+  await sleep(200)
+  const played = await evaluate(`(() => {
+    const el = [...document.querySelectorAll('[role="menuitem"]')].find(e => e.textContent.includes('Play this next'))
+    if (!el) return false
+    el.click()
+    return true
+  })()`)
+  assert.ok(played, 'Play this next missing')
+  await sleep(200)
+  assert.ok((await bodyText()).includes('You picked this one.'), 'card ignored Play this next')
+  await click('Low energy')
+  assert.equal(
+    await evaluate(
+      `document.querySelector('[aria-label="Energy"] [aria-checked="true"]')?.textContent?.trim()`
+    ),
+    'Light'
+  )
+  await click('All')
+  console.log('Verified the what next card, Not this, Play this next and the Light chip.')
+  await click('Start in Focus (Space)')
   await both('focus')
   await screenshot('focus', 2056, 1257)
   await evaluate('document.activeElement?.blur()')
@@ -1070,6 +1108,34 @@ try {
     await window.api.saveTodayPlan(null)
   })()`)
   }
+
+  // Proxy dot. The coach-error stub below replaces chat-turn for the rest of the run.
+  await nav('now')
+  const health = await evaluate(`(async () => {
+    const start = Date.now()
+    let h = await window.api.getProxyHealth()
+    while (h.status === 'unknown' && Date.now() - start < 6000) {
+      await new Promise(r => setTimeout(r, 200))
+      h = await window.api.getProxyHealth()
+    }
+    return h
+  })()`)
+  if (health.status === 'up' || health.status === 'down') {
+    const label = await evaluate(
+      `document.querySelector('[role="status"][aria-label^="AI"]')?.getAttribute('aria-label') || ''`
+    )
+    assert.ok(
+      health.status === 'up' ? label.includes('connected') : label.includes('offline'),
+      `proxy dot ${JSON.stringify(label)} for ${health.status}`
+    )
+  } else {
+    assert.equal(health.status, 'not-used')
+    assert.equal(
+      await evaluate(`document.querySelector('[role="status"][aria-label^="AI"]')`),
+      null
+    )
+  }
+  console.log('Verified the proxy dot.')
 
   // Coach error states, deterministic and with no model call: the chat-turn
   // handler is replaced from the main process (it stays replaced for the rest

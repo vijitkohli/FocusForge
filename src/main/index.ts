@@ -41,10 +41,38 @@ import { registerSourceHandlers, guardedCreateFields } from './ipc/sources'
 import { invalidateGuard } from './sources'
 import fs from 'fs-extra'
 import { BACKUP_DIR } from './store/paths'
+import { ProxyHealth, usesProxy } from './proxyHealth'
+import { initReaders, type ReaderWiring } from './ipc/readers'
+import { initVaultSync } from './ipc/vault'
+import type { VaultSync } from './vault'
+import { PlannerDeps, PlanMode, runPlan } from './planning/planner'
+import { PlanQueue, advanceTask, jobFor } from './planning/planQueue'
+import { registerPackSource, resolvePackSource, StorePackSource } from './planning/packSource'
+import { ItemTaskDeps, syncItemTasks } from './itemTasks'
+import { withDismissed } from '../common/itemTasks'
+import { hasMilestones, type PlanTaskResult } from '../common/milestones'
+import { toProxyView, type ProxyHealthView } from '../common/whatNext'
+import { WhatNextStore } from './store/WhatNextStore'
+import { BACKGROUND_PLAN_DAILY_CAP, fillMissing } from './whatNext/fillMissing'
 
 const fsManager = new FileSystemManager()
 
 let mainWindow: BrowserWindow | null = null
+
+// The one shared CLIProxyAPI health check (readers, planQueue and the sidebar dot).
+const proxyHealth = new ProxyHealth()
+const whatNext = new WhatNextStore({
+  itemIds: () =>
+    fsManager
+      .getProjects()
+      .filter((p) => p.status === 'active')
+      .map((p) => p.id),
+  readDigest: (id) => readers?.store.readDigest(id) ?? Promise.resolve(null)
+})
+// Phase 3 readers: watch item sources and keep packs and digests current.
+let readers: (ReaderWiring & { startDelayMs: number }) | null = null
+// Phase 4 vault notes (item/task notes under <vault>/FocusForge, ticks read back).
+let vault: VaultSync | null = null
 
 /**
  * Directory containing the Python engine scripts. Derived from the app path
@@ -317,6 +345,198 @@ function runPythonStreaming(
   )
 }
 
+// --- Two-level planning (Phase 5) ------------------------------------------------
+
+const PLAN_CANCELLED_MESSAGE = ''
+
+function plannerDeps(trackKey?: string): PlannerDeps {
+  return {
+    loadProjectData: (id) => fsManager.loadProjectData(id),
+    updateProjectData: (id, mutate, tag) => fsManager.updateProjectData(id, mutate, tag),
+    getProject: (id) => fsManager.getProjects().find((p) => p.id === id),
+    packSource: resolvePackSource(),
+    readLedger: (id) => fsManager.readContextLedgerForPrompt(id),
+    readProfile: () => fsManager.readUserProfileForPrompt(),
+    planModel: async () => {
+      const settings = await loadSettings()
+      return settings.planModel || settings.chatModel
+    },
+    estimateRatio: async () => (await fsManager.getEstimateAccuracy())?.ratio,
+    runEngine: (payload, timeoutMs) => {
+      const call = runPythonWithStdin('main.py', payload, timeoutMs)
+      return (trackKey ? engineCalls.track(trackKey, call) : call).promise
+    },
+    newId: () => randomUUID()
+  }
+}
+
+function broadcast(channel: string, ...args: unknown[]): void {
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel, ...args)
+}
+
+let proxyConfigured = false
+let stopProxyPoll: (() => void) | null = null
+let offProxyChange: (() => void) | null = null
+let fillTimer: ReturnType<typeof setTimeout> | null = null
+
+function proxyView(): ProxyHealthView {
+  return toProxyView(proxyConfigured, proxyHealth.current())
+}
+
+function publishProxy(): void {
+  broadcast('proxy-health', proxyView())
+}
+
+/** Poll only while a configured model goes through CLIProxyAPI. No key is read. */
+function applyProxyMode(settings: {
+  chatModel?: string
+  planModel?: string
+  digestModel?: string
+}): void {
+  const configured = [settings.chatModel, settings.planModel, settings.digestModel].some((m) =>
+    usesProxy(m)
+  )
+  proxyConfigured = configured
+  stopProxyPoll?.()
+  stopProxyPoll = null
+  offProxyChange?.()
+  offProxyChange = null
+  if (!configured) {
+    publishProxy()
+    return
+  }
+  offProxyChange = proxyHealth.onChange((up) => {
+    publishProxy()
+    if (up) scheduleFill()
+  })
+  stopProxyPoll = proxyHealth.startPolling()
+  publishProxy()
+}
+
+function scheduleFill(ms = 5_000): void {
+  if (fillTimer) clearTimeout(fillTimer)
+  fillTimer = setTimeout(() => {
+    fillTimer = null
+    void runFill()
+  }, ms)
+  ;(fillTimer as { unref?: () => void }).unref?.()
+}
+
+async function runFill(): Promise<void> {
+  if (!planQueue) return
+  const remaining = BACKGROUND_PLAN_DAILY_CAP - (await whatNext.enqueuedToday())
+  if (remaining <= 0) return
+  const added = await fillMissing({
+    getNextSteps: () => fsManager.getNextSteps(),
+    readerStatus: () => readers?.service.status() ?? {},
+    dues: () => whatNext.dues(),
+    remaining,
+    enqueue: async (job) => {
+      const data = await fsManager.loadProjectData(job.projectId)
+      const task = data?.tasks.find((t) => t.id === job.taskId)
+      if (!task || !planQueue) return false
+      const built = jobFor(job.projectId, task, true)
+      if (!built || 'advance' in built) return false
+      return planQueue.enqueue(built)
+    }
+  })
+  if (added > 0) await whatNext.addEnqueues(added)
+}
+
+/** Foreground plan / expand / replan from the task page (Stop button = 'plan'). */
+async function runPlanIpc(
+  senderId: number,
+  projectId: string,
+  taskId: string,
+  mode: PlanMode,
+  opts: { answer?: string; request?: string; milestoneId?: string } = {}
+): Promise<PlanTaskResult> {
+  try {
+    const result = await runPlan(plannerDeps(`plan:${senderId}`), projectId, taskId, mode, opts)
+    if (result.success) broadcast('tasks-changed')
+    return result
+  } catch (err) {
+    if (err instanceof EngineCancelled) {
+      return { success: false, status: 'cancelled', message: PLAN_CANCELLED_MESSAGE }
+    }
+    if (err instanceof EngineTimeout) {
+      return {
+        success: false,
+        status: 'error',
+        message: 'Planning took too long. Check that CLIProxyAPI is running, then try again.'
+      }
+    }
+    console.error('Plan error', err)
+    return { success: false, status: 'error', message: "Couldn't reach the planner. Try again." }
+  }
+}
+
+let planQueue: PlanQueue | null = null
+
+function itemTaskDeps(): ItemTaskDeps {
+  return {
+    getProject: (id) => fsManager.getProjects().find((p) => p.id === id),
+    packSource: resolvePackSource(),
+    updateProjectData: (id, mutate) => fsManager.updateProjectData(id, mutate),
+    newId: () => randomUUID()
+  }
+}
+
+/**
+ * Digest refreshed (SYNC_PLAN contract 6: Phase 3's ReaderService.onDigest
+ * calls this once merged): create or refresh deliverable/goal tasks. The save
+ * hook then queues their background plans.
+ */
+async function onDigestUpdated(projectId: string): Promise<void> {
+  try {
+    const result = await syncItemTasks(itemTaskDeps(), projectId)
+    if (result.added > 0 || result.updated > 0) broadcast('tasks-changed')
+  } catch (err) {
+    console.error(`Item task sync failed for ${projectId}`, err)
+  }
+  scheduleFill()
+}
+
+function startPlanQueue(): void {
+  planQueue = new PlanQueue({
+    // One shared proxy-health instance (SYNC_PLAN contract 5).
+    health: {
+      isUp: () => proxyHealth.current().up ?? proxyHealth.check(),
+      onChange: (cb) => proxyHealth.onChange(cb)
+    },
+    loadProjectData: (id) => fsManager.loadProjectData(id),
+    isActive: (id) => fsManager.getProjects().some((p) => p.id === id && p.status === 'active'),
+    run: (job) =>
+      runPlan(plannerDeps('plan:background'), job.projectId, job.taskId, job.kind, {
+        milestoneId: job.milestoneId
+      }),
+    advance: async (projectId, taskId, from) => {
+      await fsManager.updateProjectData(projectId, async (file) => {
+        const idx = file.tasks.findIndex((t) => t.id === taskId)
+        const next = idx === -1 ? null : advanceTask(file.tasks[idx], from)
+        if (!next) return null
+        const done = next.milestones?.find((m) => m.id === from)
+        file.tasks[idx] = next
+        return {
+          data: file,
+          notes: [
+            {
+              section: 'Milestones & Completed Work',
+              note: `Finished "${done?.title}" (${file.tasks[idx].title}).`
+            }
+          ]
+        }
+      })
+    },
+    notify: (event) => broadcast('plan-status', event),
+    tasksChanged: () => broadcast('tasks-changed')
+  })
+  fsManager.onSaved((projectId, data) => {
+    void planQueue?.onProjectSaved(projectId, data)
+    scheduleFill()
+  })
+}
+
 function createWindow(): void {
   // Create the browser window.
   const win = new BrowserWindow({
@@ -387,7 +607,12 @@ function createWindow(): void {
   // Create a new project
   // Optional item fields (category etc.); sources are guard-checked
   ipcMain.handle('create-project', async (_event, name, fields) => {
-    return fsManager.createProject(name, fields ? await guardedCreateFields(fields) : undefined)
+    const created = await fsManager.createProject(
+      name,
+      fields ? await guardedCreateFields(fields) : undefined
+    )
+    readers?.sync()
+    return created
   })
 
   // Item discovery, approval and vault choice (src/main/ipc/sources.ts)
@@ -395,7 +620,9 @@ function createWindow(): void {
     fsManager,
     notifyTasksChanged: () => {
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send('tasks-changed')
-    }
+      readers?.sync()
+    },
+    onAccessChanged: () => void vault?.restart()
   })
 
   ipcMain.handle('save-project-data', (_event, id, data, notes, expectedRev) =>
@@ -404,11 +631,30 @@ function createWindow(): void {
 
   ipcMain.handle('load-project-data', (_event, id) => fsManager.loadProjectData(id))
 
-  ipcMain.handle('delete-project', (_event, id) => fsManager.deleteProject(id))
+  ipcMain.handle('delete-project', async (_event, id) => {
+    readers?.service.cancel(id)
+    const result = await fsManager.deleteProject(id)
+    readers?.sync()
+    return result
+  })
 
-  ipcMain.handle('delete-task', (_event, projectId, taskId) =>
-    fsManager.deleteTask(projectId, taskId)
-  )
+  // Deleting an auto-created task dismisses it for good (D1).
+  ipcMain.handle('delete-task', async (_event, projectId, taskId) => {
+    const data = await fsManager.loadProjectData(projectId)
+    const task = data?.tasks.find((t) => t.id === taskId)
+    if (!task?.origin) return fsManager.deleteTask(projectId, taskId)
+    const saved = await fsManager.updateProjectData(projectId, async (file) => ({
+      data: {
+        ...file,
+        tasks: file.tasks.filter((t) => t.id !== taskId),
+        dismissedOrigins: withDismissed(
+          file.dismissedOrigins,
+          file.tasks.find((t) => t.id === taskId)
+        )
+      }
+    }))
+    return saved ?? { success: false, error: 'Project not found' }
+  })
 
   ipcMain.handle('read-context-ledger', (_event, projectId) =>
     fsManager.readContextLedger(projectId)
@@ -429,6 +675,34 @@ function createWindow(): void {
   ipcMain.handle('get-activity-stats', () => fsManager.getActivityStats())
 
   ipcMain.handle('get-estimate-accuracy', () => fsManager.getEstimateAccuracy())
+
+  // Two-level planning (Phase 5)
+  ipcMain.handle('plan-task', (event, projectId: string, taskId: string, answer?: string) =>
+    runPlanIpc(event.sender.id, projectId, taskId, 'plan', { answer })
+  )
+  ipcMain.handle(
+    'expand-milestone',
+    (event, projectId: string, taskId: string, milestoneId?: string) =>
+      runPlanIpc(event.sender.id, projectId, taskId, 'expand', { milestoneId })
+  )
+  ipcMain.handle('replan-task', (event, projectId: string, taskId: string, request?: string) =>
+    runPlanIpc(event.sender.id, projectId, taskId, 'replan', { request })
+  )
+  ipcMain.handle('sync-item-tasks', async (_event, projectId: string) => {
+    const result = await syncItemTasks(itemTaskDeps(), projectId)
+    if (result.added > 0 || result.updated > 0) broadcast('tasks-changed')
+    return result
+  })
+  ipcMain.handle('get-next-steps', () => fsManager.getNextSteps())
+  ipcMain.handle('get-what-next-signals', () => whatNext.signals())
+  ipcMain.handle('record-skip', (_event, raw: unknown) => whatNext.recordSkip(raw))
+  ipcMain.handle('update-skip-reason', (_event, at: unknown, reason: unknown, undone?: boolean) =>
+    whatNext.updateSkipReason(at, reason, undone)
+  )
+  ipcMain.handle('mark-touched', (_event, itemId: unknown) => whatNext.markTouched(itemId))
+  ipcMain.handle('clear-today-skips', () => whatNext.clearToday())
+  ipcMain.handle('get-proxy-health', () => proxyView())
+  ipcMain.handle('get-plan-queue-status', () => planQueue?.status() ?? null)
 
   ipcMain.handle('get-settings', () => loadSettings())
 
@@ -507,6 +781,9 @@ function createWindow(): void {
   ipcMain.handle('save-settings', async (_event, patch) => {
     const next = await saveSettings(sanitizeRendererSettingsPatch(patch))
     invalidateGuard()
+    readers?.restart()
+    void vault?.restart()
+    applyProxyMode(next)
     return next
   })
 
@@ -599,9 +876,12 @@ app.whenReady().then(() => {
   })
 
   // Stop button: kills the renderer's in-flight coach turn or plan adjustment.
-  ipcMain.handle('cancel-engine-call', (event, kind: 'chat' | 'adjust' | 'split' | 'outline') => {
-    engineCalls.cancel(`${kind}:${event.sender.id}`)
-  })
+  ipcMain.handle(
+    'cancel-engine-call',
+    (event, kind: 'chat' | 'adjust' | 'split' | 'outline' | 'plan') => {
+      engineCalls.cancel(`${kind}:${event.sender.id}`)
+    }
+  )
 
   ipcMain.handle(
     'select-and-extract-document',
@@ -657,6 +937,23 @@ app.whenReady().then(() => {
       model: string
     ) => {
       try {
+        // Tasks with a milestone plan are adjusted by re-planning the rest,
+        // so milestones and finished parts stay consistent.
+        const current = (await fsManager.loadProjectData(projectId))?.tasks.find(
+          (t) => t.id === taskId
+        )
+        if (current && hasMilestones(current)) {
+          const result = await runPlanIpc(event.sender.id, projectId, taskId, 'replan', {
+            request
+          })
+          if (result.status === 'cancelled') return { success: false, cancelled: true, message: '' }
+          return {
+            success: result.success,
+            message: result.message,
+            subtasks: result.task?.subtasks ?? [],
+            prerequisites: result.task?.prerequisites ?? []
+          }
+        }
         const [contextLedger, userProfile, settings, accuracy] = await Promise.all([
           fsManager.readContextLedgerForPrompt(projectId),
           fsManager.readUserProfileForPrompt(),
@@ -712,13 +1009,23 @@ app.whenReady().then(() => {
             { subtasks: task.subtasks ?? [], prerequisites: task.prerequisites ?? [] },
             {
               subtasks: response.data.subtasks ?? [],
-              prerequisites: response.data.prerequisites ?? []
+              prerequisites: response.data.prerequisites ?? [],
+              completedIds: Array.isArray(response.data.completedIds)
+                ? response.data.completedIds
+                : []
             },
             { allowDropCompleted: requestsRemovingCompleted(request) }
           )
           task.subtasks = merged.subtasks
           task.prerequisites = merged.prerequisites
 
+          const marked = [...merged.completedSubtasks, ...merged.completedPrerequisites]
+          if (marked.length > 0) {
+            notes.push({
+              section: 'Milestones & Completed Work',
+              note: `Marked done (already finished): ${marked.map((r) => `"${r.title}"`).join(', ')}.`
+            })
+          }
           const restored = [...merged.restoredSubtasks, ...merged.restoredPrerequisites]
           if (restored.length > 0) {
             const titles = restored.map((r) => `"${r.title}"`).join(', ')
@@ -940,9 +1247,48 @@ app.whenReady().then(() => {
   ipcMain.on('ping', () => console.log('pong'))
 
   createWindow()
+  readers = initReaders({
+    fsManager,
+    health: proxyHealth,
+    runScript: (script, payload, timeoutMs, onStderr) =>
+      runEngine(join(resolveEngineDir(), script), payload, {
+        pythonPath: PYTHON_PATH,
+        timeoutMs,
+        onStderr
+      }),
+    // Phase 4 -> Phase 3: each item's My notes come back as virtual pack sources.
+    virtualRefs: (itemId) => vault?.myNotesRefs(itemId) ?? []
+  })
+  vault = initVaultSync({ fsManager, readers })
+  // Phase 3 -> Phase 5: plans read the stored packs, and every digest refresh
+  // creates or refreshes deliverable/goal tasks (SYNC_PLAN contracts 1 and 6).
+  registerPackSource(new StorePackSource(readers.store))
+  readers.service.onDigest((itemId) => void onDigestUpdated(itemId))
+  // QA only (scripts/qa-readers.mjs): lets the isolated run inspect watchers and flip proxy health.
+  if (process.env.FOCUSFORGE_QA === '1') {
+    ;(globalThis as Record<string, unknown>).__ffReaders = { readers, proxyHealth }
+  }
+  // After the warm spare and first paint; item packs are then staggered.
+  setTimeout(() => void readers?.start().catch(() => undefined), readers.startDelayMs)
   void fsManager.pruneBackups()
   mainSpare = new WarmSpare(join(resolveEngineDir(), 'main.py'), PYTHON_PATH)
   mainSpare.warm()
+
+  // Background planning: rolling expansion on every save, plus a startup scan.
+  startPlanQueue()
+  void whatNext.prune()
+  void loadSettings().then((settings) => applyProxyMode(settings))
+  scheduleFill(40_000)
+  setTimeout(() => {
+    void (async () => {
+      const active = fsManager
+        .getProjects()
+        .filter((p) => p.status === 'active')
+        .map((p) => p.id)
+      for (const id of active) await onDigestUpdated(id)
+      await planQueue?.scan(active)
+    })()
+  }, 1000 * 25)
 
   // Gentle procrastination nudges: check shortly after launch, then periodically.
   setTimeout(maybeNudge, 1000 * 30)
@@ -963,8 +1309,14 @@ app.whenReady().then(() => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('before-quit', () => {
+  readers?.stop()
+  vault?.dispose()
   engineCalls.cancelAll()
+  planQueue?.dispose()
   mainSpare?.dispose()
+  if (fillTimer) clearTimeout(fillTimer)
+  stopProxyPoll?.()
+  offProxyChange?.()
 })
 
 app.on('window-all-closed', () => {

@@ -11,6 +11,9 @@ import type { ApplyDiscoveryRequest } from '../common/discovery'
 import { AppSettings } from '../common/models'
 import type { OutlineAssessment } from '../common/outline'
 import type { TodayPlan } from '../common/today'
+import type { ReaderStatus } from '../common/readers'
+import type { PlanStatusEvent } from '../common/milestones'
+import type { ProxyHealthView, SkipEvent, SkipReason } from '../common/whatNext'
 
 // Custom APIs for renderer
 const api = {
@@ -36,6 +39,35 @@ const api = {
   cancelPlanAdjustment: () => ipcRenderer.invoke('cancel-engine-call', 'adjust'),
   cancelSplitStep: () => ipcRenderer.invoke('cancel-engine-call', 'split'),
   cancelCourseOutline: () => ipcRenderer.invoke('cancel-engine-call', 'outline'),
+  cancelPlan: () => ipcRenderer.invoke('cancel-engine-call', 'plan'),
+
+  // Two-level planning: whole-job milestones + steps for the current one
+  planTask: (projectId: string, taskId: string, answer?: string) =>
+    ipcRenderer.invoke('plan-task', projectId, taskId, answer),
+  expandMilestone: (projectId: string, taskId: string, milestoneId?: string) =>
+    ipcRenderer.invoke('expand-milestone', projectId, taskId, milestoneId),
+  replanTask: (projectId: string, taskId: string, request?: string) =>
+    ipcRenderer.invoke('replan-task', projectId, taskId, request),
+  syncItemTasks: (projectId: string) => ipcRenderer.invoke('sync-item-tasks', projectId),
+  getNextSteps: () => ipcRenderer.invoke('get-next-steps'),
+  getWhatNextSignals: () => ipcRenderer.invoke('get-what-next-signals'),
+  recordSkip: (event: SkipEvent) => ipcRenderer.invoke('record-skip', event),
+  updateSkipReason: (at: string, reason: SkipReason, undone?: boolean) =>
+    ipcRenderer.invoke('update-skip-reason', at, reason, undone),
+  markTouched: (itemId: string) => ipcRenderer.invoke('mark-touched', itemId),
+  clearTodaySkips: () => ipcRenderer.invoke('clear-today-skips'),
+  getProxyHealth: () => ipcRenderer.invoke('get-proxy-health'),
+  onProxyHealth: (callback: (health: ProxyHealthView) => void) => {
+    const listener = (_e: unknown, health: ProxyHealthView): void => callback(health)
+    ipcRenderer.on('proxy-health', listener)
+    return () => ipcRenderer.removeListener('proxy-health', listener)
+  },
+  getPlanQueueStatus: () => ipcRenderer.invoke('get-plan-queue-status'),
+  onPlanStatus: (callback: (event: PlanStatusEvent) => void) => {
+    const listener = (_e: unknown, event: PlanStatusEvent): void => callback(event)
+    ipcRenderer.on('plan-status', listener)
+    return () => ipcRenderer.removeListener('plan-status', listener)
+  },
 
   // Course outline import: pick + read a PDF (resolves null if the picker is
   // closed), then save the assessments the user confirmed as unplanned tasks.
@@ -196,6 +228,39 @@ const api = {
     const listener = (): void => callback()
     ipcRenderer.on('open-focus', listener)
     return () => ipcRenderer.removeListener('open-focus', listener)
+  },
+
+  // Phase 3 readers: per-item sync status, manual refresh and the item summary.
+  // Statuses and digests only; pack text and paths never reach the renderer.
+  getReaderStatus: () => ipcRenderer.invoke('get-reader-status'),
+  refreshItem: (itemId: string) => ipcRenderer.invoke('refresh-item', itemId),
+  refreshAllItems: () => ipcRenderer.invoke('refresh-all-items'),
+  cancelItemRefresh: (itemId: string) => ipcRenderer.invoke('cancel-item-refresh', itemId),
+  getItemDigest: (itemId: string) => ipcRenderer.invoke('get-item-digest', itemId),
+  onReaderStatus: (callback: (all: Record<string, ReaderStatus>) => void) => {
+    const listener = (_e: unknown, all: Record<string, ReaderStatus>): void => callback(all)
+    ipcRenderer.on('reader-status', listener)
+    return () => ipcRenderer.removeListener('reader-status', listener)
+  },
+  // A new digest was saved for an item (`digest-updated(itemId)`).
+  onDigestUpdated: (callback: (itemId: string) => void) => {
+    const listener = (_e: unknown, itemId: string): void => callback(itemId)
+    ipcRenderer.on('digest-updated', listener)
+    return () => ipcRenderer.removeListener('digest-updated', listener)
+  },
+  // Phase 4 vault notes: status, Open in Obsidian, Sync now, Recreate. Statuses only, never note text.
+  getVaultStatus: () => ipcRenderer.invoke('vault-status'),
+  openInObsidian: (itemId: string, taskId?: string) =>
+    ipcRenderer.invoke('vault-open-note', itemId, taskId),
+  syncVaultNow: () => ipcRenderer.invoke('vault-sync-now'),
+  recreateVaultNote: (itemId: string, taskId?: string) =>
+    ipcRenderer.invoke('vault-recreate-note', itemId, taskId),
+  resumeVaultFolder: () => ipcRenderer.invoke('vault-resume-folder'),
+  getDataviewSnippet: () => ipcRenderer.invoke('vault-dataview-snippet'),
+  onVaultSyncChanged: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('vault-sync-changed', listener)
+    return () => ipcRenderer.removeListener('vault-sync-changed', listener)
   }
 }
 
