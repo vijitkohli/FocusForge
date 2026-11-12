@@ -23,8 +23,12 @@ import {
   SaveResult,
   ProjectMutation,
   WorkstreamOp,
-  ApplyWorkstreamsResult
+  ApplyWorkstreamsResult,
+  SaveTag,
+  SavedListener,
+  RegistryListener
 } from './store/ProjectStore'
+import type { ItemNextStep } from '../common/nextSteps'
 
 /**
  * Thin facade over the FlowState data stores. The IPC layer in index.ts keeps
@@ -62,6 +66,9 @@ export class FileSystemManager {
   ): Promise<{ success: boolean; error?: string }> {
     return this.projects.updateWorkstream(projectId, patch)
   }
+  setSourceActivity(projectId: string, iso: string): Promise<void> {
+    return this.projects.setSourceActivity(projectId, iso)
+  }
   applyWorkstreams(ops: WorkstreamOp[]): Promise<ApplyWorkstreamsResult> {
     return this.projects.applyWorkstreams(ops)
   }
@@ -75,15 +82,29 @@ export class FileSystemManager {
     projectId: string,
     data: ProjectData,
     notes?: LedgerNote[],
-    expectedRev?: number
+    expectedRev?: number,
+    tag?: SaveTag
   ): Promise<SaveResult> {
-    return this.projects.saveProjectData(projectId, data, notes, expectedRev)
+    return this.projects.saveProjectData(projectId, data, notes, expectedRev, tag)
   }
   updateProjectData(
     projectId: string,
-    mutate: (data: ProjectData) => Promise<ProjectMutation>
+    mutate: (data: ProjectData) => Promise<ProjectMutation>,
+    tag?: SaveTag
   ): Promise<SaveResult | null> {
-    return this.projects.updateProjectData(projectId, mutate)
+    return this.projects.updateProjectData(projectId, mutate, tag)
+  }
+  /** Shared save hook (one listener list for every phase). */
+  onSaved(listener: SavedListener): () => void {
+    return this.projects.onSaved(listener)
+  }
+  /** Registry hook: item created, item fields changed, or deleted. */
+  onRegistryChanged(listener: RegistryListener): () => void {
+    return this.projects.onRegistryChanged(listener)
+  }
+  /** Phase 4: the item's vault note path (null clears it). */
+  setVaultNote(projectId: string, rel: string | null): Promise<boolean> {
+    return this.projects.setVaultNote(projectId, rel)
   }
   getWeekSummary(weekStart: string): Promise<WeekSummary> {
     return this.analytics.getWeekSummary(weekStart)
@@ -153,6 +174,9 @@ export class FileSystemManager {
   }
   getEstimateAccuracy(): Promise<EstimateAccuracy | null> {
     return this.analytics.getEstimateAccuracy()
+  }
+  getNextSteps(): Promise<ItemNextStep[]> {
+    return this.analytics.getNextSteps()
   }
 
   // --- Nudges ---

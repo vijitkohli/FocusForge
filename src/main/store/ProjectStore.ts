@@ -29,6 +29,7 @@ import { emptyUserProfile } from './ProfileStore'
 import { Backups } from './Backups'
 import { withLock } from './locks'
 import { writeFileAtomicSync, writeJsonAtomic, writeJsonAtomicSync } from './atomic'
+import { hasMilestones, milestoneMinutes } from '../../common/milestones'
 
 export type { SaveResult }
 
@@ -45,6 +46,53 @@ export interface ApplyWorkstreamsResult {
 /** Result of an in-lock mutation: the new data plus ledger notes, or null to skip saving. */
 export type ProjectMutation = { data: ProjectData; notes?: LedgerNote[] } | null
 
+/**
+ * Who made a save. Only 'vault' exists today (Phase 4 tick read-back), so a
+ * listener can skip writing back what it just read. Distinct from ProjectTask.origin.
+ */
+export interface SaveTag {
+  by?: 'vault'
+}
+
+/** Called after every successful project save, outside the project lock. */
+export type SavedListener = (projectId: string, data: ProjectData, tag: SaveTag) => void
+
+/** What happened to a registry entry (create, item-field update, delete). */
+export type RegistryChange = 'created' | 'updated' | 'deleted'
+
+/** Called after a registry change, outside the registry lock. */
+export type RegistryListener = (projectId: string, kind: RegistryChange) => void
+
+/**
+ * Project completion 0–100. Old tasks count steps (done / total over all of
+ * them, as before); tasks with milestones count minutes of the whole job, so a
+ * plan with only its first part expanded doesn't look half done.
+ */
+export function projectProgress(tasks: ProjectTask[]): number {
+  if (!tasks.some((t) => hasMilestones(t))) {
+    const allSubtasks: Subtask[] = tasks.flatMap((t: ProjectTask) => t.subtasks ?? [])
+    return allSubtasks.length === 0
+      ? 0
+      : Math.round((allSubtasks.filter((s) => s.isCompleted).length / allSubtasks.length) * 100)
+  }
+  let total = 0
+  let done = 0
+  for (const t of tasks) {
+    if (hasMilestones(t)) {
+      const m = milestoneMinutes(t)
+      total += m.total
+      done += m.done
+    } else {
+      for (const s of t.subtasks ?? []) {
+        const mins = s.timeEstimate ?? 15
+        total += mins
+        if (s.isCompleted) done += mins
+      }
+    }
+  }
+  return total > 0 ? Math.round((done / total) * 100) : 0
+}
+
 function emptyLedgerContents(): string {
   return LEDGER_SECTIONS.map((section) => `## ${section}\n`).join('\n')
 }
@@ -57,11 +105,85 @@ function emptyLedgerContents(): string {
  * ledger record always happen together).
  */
 export class ProjectStore {
+  private savedListeners: SavedListener[] = []
+  private registryListeners: RegistryListener[] = []
+
   constructor(
     private ledger: LedgerStore,
     private backups: Backups = new Backups()
   ) {
     this.ensureSystemPaths()
+  }
+
+  /**
+   * Shared save hook (SYNC_PLAN contract 10): one listener list for every
+   * consumer (Phase 5 rolling expansion, Phase 4 vault notes). Returns an
+   * unsubscribe function.
+   */
+  onSaved(listener: SavedListener): () => void {
+    this.savedListeners.push(listener)
+    return () => {
+      this.savedListeners = this.savedListeners.filter((l) => l !== listener)
+    }
+  }
+
+  private emitSaved(projectId: string, data: ProjectData, tag: SaveTag): void {
+    if (this.savedListeners.length === 0) return
+    const listeners = [...this.savedListeners]
+    // Outside the project lock, so a listener may save again.
+    queueMicrotask(() => {
+      for (const l of listeners) {
+        try {
+          l(projectId, data, tag)
+        } catch (err) {
+          console.error('Save listener failed', err)
+        }
+      }
+    })
+  }
+
+  /**
+   * Registry hook (Phase 4): fires after an item is created, its item fields
+   * change (name, category, kind, status, sources) or it is deleted. Progress
+   * and activity bumps don't fire it (a save already did), and neither does
+   * setVaultNote. Returns an unsubscribe function.
+   */
+  onRegistryChanged(listener: RegistryListener): () => void {
+    this.registryListeners.push(listener)
+    return () => {
+      this.registryListeners = this.registryListeners.filter((l) => l !== listener)
+    }
+  }
+
+  private emitRegistry(projectId: string, kind: RegistryChange): void {
+    if (this.registryListeners.length === 0) return
+    const listeners = [...this.registryListeners]
+    queueMicrotask(() => {
+      for (const l of listeners) {
+        try {
+          l(projectId, kind)
+        } catch (err) {
+          console.error('Registry listener failed', err)
+        }
+      }
+    })
+  }
+
+  /**
+   * Records (or clears, with null) the vault-relative path of an item's note
+   * (Phase 4), under the registry lock. Doesn't fire onRegistryChanged.
+   */
+  async setVaultNote(projectId: string, rel: string | null): Promise<boolean> {
+    return withLock('registry', async () => {
+      const registry: ProjectSummary[] = await fs.readJSON(REGISTRY_PATH)
+      const entry = registry.find((p) => p.id === projectId)
+      if (!entry) return false
+      if ((entry.vaultNote ?? null) === rel) return true
+      if (rel === null) delete entry.vaultNote
+      else entry.vaultNote = rel
+      await writeJsonAtomic(REGISTRY_PATH, registry)
+      return true
+    })
   }
 
   /**
@@ -138,6 +260,7 @@ export class ProjectStore {
       return newSummary
     })
 
+    this.emitRegistry(summary.id, 'created')
     return withWorkstreamDefaults(summary)
   }
 
@@ -196,11 +319,31 @@ export class ProjectStore {
           data.name === name ? null : { data: { ...data, name } }
         )
       }
+      this.emitRegistry(projectId, 'updated')
       return { success: true }
     } catch (error) {
       console.error(`Failed to update item ${projectId}:`, error)
       return { success: false, error: (error as Error).message }
     }
+  }
+
+  /**
+   * Records the newest change seen in an item's sources (Phase 3 readers).
+   * Only ever moves the date forward; under the registry lock.
+   */
+  async setSourceActivity(projectId: string, iso: string): Promise<void> {
+    const t = Date.parse(iso)
+    if (!Number.isFinite(t)) return
+    const next = new Date(t).toISOString()
+    await withLock('registry', async () => {
+      const registry: ProjectSummary[] = await fs.readJSON(REGISTRY_PATH)
+      const entry = registry.find((p) => p.id === projectId)
+      if (!entry) return
+      const cur = entry.sourceActivityAt ? Date.parse(entry.sourceActivityAt) : NaN
+      if (Number.isFinite(cur) && cur >= t) return
+      entry.sourceActivityAt = next
+      await writeJsonAtomic(REGISTRY_PATH, registry)
+    })
   }
 
   /**
@@ -243,6 +386,7 @@ export class ProjectStore {
           )
         })
       })
+      this.emitRegistry(projectId, 'deleted')
       return { success: true }
     } catch (error) {
       console.error(`Failed to delete project ${projectId}:`, error)
@@ -278,7 +422,8 @@ export class ProjectStore {
     projectId: string,
     data: ProjectData,
     notes?: LedgerNote[],
-    expectedRev?: number
+    expectedRev?: number,
+    tag: SaveTag = {}
   ): Promise<SaveResult> {
     return withLock(`project:${projectId}`, async () => {
       try {
@@ -292,7 +437,7 @@ export class ProjectStore {
             }
           }
         }
-        return await this.writeUnlocked(projectId, data, notes)
+        return await this.writeUnlocked(projectId, data, notes, tag)
       } catch (error) {
         console.error(`Failed to save project ${projectId}:`, error)
         return { success: false, error: (error as Error).message }
@@ -307,7 +452,8 @@ export class ProjectStore {
    */
   updateProjectData(
     projectId: string,
-    mutate: (data: ProjectData) => Promise<ProjectMutation>
+    mutate: (data: ProjectData) => Promise<ProjectMutation>,
+    tag: SaveTag = {}
   ): Promise<SaveResult | null> {
     return withLock(`project:${projectId}`, async () => {
       const data = await this.loadProjectData(projectId)
@@ -315,7 +461,7 @@ export class ProjectStore {
       const change = await mutate(data)
       if (!change) return null
       try {
-        return await this.writeUnlocked(projectId, change.data, change.notes)
+        return await this.writeUnlocked(projectId, change.data, change.notes, tag)
       } catch (error) {
         console.error(`Failed to save project ${projectId}:`, error)
         return { success: false, error: (error as Error).message }
@@ -327,7 +473,8 @@ export class ProjectStore {
   private async writeUnlocked(
     projectId: string,
     data: ProjectData,
-    notes?: LedgerNote[]
+    notes?: LedgerNote[],
+    tag: SaveTag = {}
   ): Promise<SaveResult> {
     await this.backups.snapshotBeforeSave(projectId)
     const current = await this.loadProjectData(projectId)
@@ -337,6 +484,7 @@ export class ProjectStore {
     if (notes && notes.length > 0) {
       await this.ledger.appendLedgerNotes(projectId, notes)
     }
+    this.emitSaved(projectId, { ...data, rev }, tag)
     return { success: true, rev }
   }
 
@@ -357,12 +505,7 @@ export class ProjectStore {
    * (plus lastActive) into the registry.
    */
   private async updateProjectProgress(projectId: string, data: ProjectData): Promise<void> {
-    const tasks = data?.tasks ?? []
-    const allSubtasks: Subtask[] = tasks.flatMap((t: ProjectTask) => t.subtasks ?? [])
-    const progress =
-      allSubtasks.length === 0
-        ? 0
-        : Math.round((allSubtasks.filter((s) => s.isCompleted).length / allSubtasks.length) * 100)
+    const progress = projectProgress(data?.tasks ?? [])
 
     await withLock('registry', async () => {
       const registry: ProjectSummary[] = await fs.readJSON(REGISTRY_PATH)
