@@ -16,7 +16,9 @@ _JSON_ERROR_HINTS = ("JSONDecodeError", "Expecting value", "Expecting property",
 
 
 def split_model(model):
-    """'A+fast=B' runs model A with B drafting questions (the app's fast-question mode)."""
+    """'A+fast=B' runs model A with B drafting questions (the app's fast-question mode).
+    A '+twolevel' suffix is stripped here and handled in build_payload."""
+    model = model.replace("+twolevel", "")
     if "+fast=" in model:
         main_model, fast_model = model.split("+fast=", 1)
         return main_model, fast_model
@@ -24,6 +26,7 @@ def split_model(model):
 
 
 def build_payload(case, model, mode, today=None):
+    two_level = "+twolevel" in model  # Phase 5 §2.7: Coach plans with milestones
     model, fast_model = split_model(model)
     messages = [dict(m) for m in case["messages"]]
     if mode == "execute":
@@ -44,6 +47,8 @@ def build_payload(case, model, mode, today=None):
         payload["estimateRatio"] = case["estimate_ratio"]
     if fast_model:
         payload["fastModel"] = fast_model
+    if two_level:
+        payload["twoLevel"] = True
     return payload
 
 

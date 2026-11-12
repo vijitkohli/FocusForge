@@ -34,6 +34,7 @@ MT_COLUMNS = [
     ("notes_recall", "notes recall"),
     ("user_notes_clean", "profile clean"),
     ("no_ledger_renotes", "no re-note"),
+    ("notes_filed", "notes filed"),
     ("notes_no_dupes", "no dup notes"),
     ("plan_mentions", "plan uses answers"),
     ("plan_forbidden", "no redo"),
@@ -128,9 +129,21 @@ def load_records(model, cases, mode):
     return out
 
 
+def _render_two_level(models, judge_model):
+    """Two-level plan section (plan_eval.py); empty when no plan-mode results are cached."""
+    from plan_eval import aggregate_two_level, render_two_level
+
+    def records(model, cases, mode):
+        return [rec for _case, rec in load_records(model, cases, mode)]
+    agg = {m: aggregate_two_level(m, judge_model, records, _load_verdict, record_error, INFRA_ERRORS) for m in models}
+    return render_two_level(models, agg, judge_model)
+
+
 def record_error(rec):
     """Error kind re-derived with the current rules, for every mode."""
     mode = rec.get("mode")
+    if mode in ("plan", "expand", "replan"):
+        return rec.get("error")
     if mode == "adjust":
         if rec.get("error") in ("engine_error", "json_parse_failure", "rate_limited", "proxy_unavailable"):
             return adjust_error(rec.get("result"), None)
@@ -483,6 +496,7 @@ def render(summary, cases, judge_model):
 
     L.extend(render_multiturn(summary, judge_model))
     L.extend(render_adjust(summary, judge_model))
+    L.extend(_render_two_level(models, judge_model))
 
     # ---- recommendation (computed) ----------------------------------------
     L.append("## Computed ranking")
