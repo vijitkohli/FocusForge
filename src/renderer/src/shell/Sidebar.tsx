@@ -11,6 +11,7 @@ import type { Workstream } from 'src/common/types'
 import { withWorkstreamDefaults } from 'src/common/workstreams'
 import { Cover, IconButton } from '../ui'
 import type { NavigationProps, View } from './navigation'
+import { ProxyDot } from './ProxyDot'
 
 const COLLAPSED_KEY = 'focusforge.sidebar.collapsed'
 const NARROW_QUERY = '(max-width: 1099px)'
@@ -174,6 +175,7 @@ export function Sidebar({ view, onNavigate }: SidebarProps): JSX.Element {
       </nav>
 
       <nav aria-label="Account" className="shrink-0 px-2 py-4">
+        <ProxyDot collapsed={collapsed} />
         <SidebarItem
           label="Profile"
           shortcut="⌘,"

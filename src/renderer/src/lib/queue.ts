@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import type { ItemNextStep } from '../../../common/nextSteps'
 import type { UpcomingSubtask } from '../../../common/types'
 import { focusTimer } from './focusTimer'
 
@@ -15,6 +16,8 @@ export const MOOD_TO_DIFFICULTY = {
 export interface QueueSnapshot {
   readonly all: readonly UpcomingSubtask[]
   readonly items: readonly UpcomingSubtask[]
+  /** One next step per open task (Phase 5). Empty until `getNextSteps` resolves. */
+  readonly nextSteps: readonly ItemNextStep[]
   readonly current: UpcomingSubtask | null
   readonly mood: QueueMood
   readonly skipped: readonly string[]
@@ -58,6 +61,7 @@ const listeners = new Set<() => void>()
 let snapshot: QueueSnapshot = {
   all: [],
   items: [],
+  nextSteps: [],
   current: null,
   mood: 'all',
   skipped: [],
@@ -98,13 +102,21 @@ async function refresh(): Promise<void> {
   publish({ loading: true, error: null })
   const operation = (async () => {
     try {
-      const all = await window.api.getUpcomingSubtasks()
+      const nextStepsPromise =
+        typeof window.api.getNextSteps === 'function'
+          ? window.api.getNextSteps().catch(() => [] as ItemNextStep[])
+          : Promise.resolve([] as ItemNextStep[])
+      const [all, nextSteps] = await Promise.all([
+        window.api.getUpcomingSubtasks(),
+        nextStepsPromise
+      ])
       if (version === request) {
         const keys = new Set(all.map(queueKey))
         const timerKey = focusTimer.getSnapshot().subtaskId
         publish(
           {
             all,
+            nextSteps,
             loading: false,
             loaded: true,
             skipped: snapshot.skipped.filter((key) => keys.has(key)),
