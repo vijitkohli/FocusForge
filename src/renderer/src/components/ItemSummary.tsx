@@ -6,7 +6,8 @@ import { formatLocalDate } from '../lib/dates'
 
 /**
  * Collapsible "Summary" panel for an item: the digest's goal, gaps, due dates
- * and current state (Markdown shown as plain text; citations are labels).
+ * and current state (its short Markdown rendered as headings, lists and paragraphs;
+ * citations dimmed).
  */
 export function ItemSummary({ itemId }: { itemId: string }): JSX.Element | null {
   const [digest, setDigest] = useState<ItemDigest | null>(null)
@@ -85,9 +86,89 @@ export function ItemSummary({ itemId }: { itemId: string }): JSX.Element | null 
               </ul>
             </div>
           )}
-          <div className="whitespace-pre-wrap text-fg-2">{digest.currentState}</div>
+          <SummaryText text={digest.currentState} />
         </div>
       )}
     </section>
+  )
+}
+
+const CITATION = /(\([^()]*,\s*\d{1,2}\s+[A-Z][a-z]{2}\))/g
+
+/** Inline text: **bold** and dimmed "(source, 12 Nov)" citations. */
+function Inline({ text }: { text: string }): JSX.Element {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) {
+          return (
+            <strong key={i} className="font-semibold text-fg-1">
+              {part.slice(2, -2)}
+            </strong>
+          )
+        }
+        return part.split(CITATION).map((piece, j) =>
+          /^\([^()]*,\s*\d{1,2}\s+[A-Z][a-z]{2}\)$/.test(piece) ? (
+            <span key={`${i}-${j}`} className="text-fg-3">
+              {piece}
+            </span>
+          ) : (
+            piece
+          )
+        )
+      })}
+    </>
+  )
+}
+
+type Block =
+  | { kind: 'heading'; text: string }
+  | { kind: 'list'; items: string[] }
+  | { kind: 'para'; text: string }
+
+/** The digest summary is short Markdown: headings, bullet lists and paragraphs. */
+function toBlocks(md: string): Block[] {
+  const blocks: Block[] = []
+  for (const raw of md.split('\n')) {
+    const line = raw.trimEnd()
+    const heading = /^#{1,6}\s+(.*)$/.exec(line)
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line)
+    const last = blocks[blocks.length - 1]
+    if (heading) blocks.push({ kind: 'heading', text: heading[1] })
+    else if (bullet) {
+      if (last?.kind === 'list') last.items.push(bullet[1])
+      else blocks.push({ kind: 'list', items: [bullet[1]] })
+    } else if (line.trim()) {
+      if (last?.kind === 'para') last.text += ' ' + line.trim()
+      else blocks.push({ kind: 'para', text: line.trim() })
+    } else if (last?.kind === 'para') blocks.push({ kind: 'para', text: '' })
+  }
+  return blocks.filter((b) => b.kind !== 'para' || b.text)
+}
+
+function SummaryText({ text }: { text: string }): JSX.Element {
+  return (
+    <div className="text-fg-2">
+      {toBlocks(text).map((block, i) =>
+        block.kind === 'heading' ? (
+          <h4 key={i} className="mb-1.5 mt-5 text-sm font-semibold text-fg-1 first:mt-0">
+            <Inline text={block.text} />
+          </h4>
+        ) : block.kind === 'list' ? (
+          <ul key={i} className="mb-3 list-disc space-y-1 pl-5 marker:text-fg-3">
+            {block.items.map((item, j) => (
+              <li key={j}>
+                <Inline text={item} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p key={i} className="mb-3 max-w-[72ch]">
+            <Inline text={block.text} />
+          </p>
+        )
+      )}
+    </div>
   )
 }
