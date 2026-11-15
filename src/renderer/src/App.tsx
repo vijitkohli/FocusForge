@@ -180,7 +180,7 @@ function App(): JSX.Element {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <main className="min-h-0 flex-1 overflow-y-auto">
           <div
-            className={`mx-auto flex w-full max-w-[1424px] flex-col px-8 ${view.name === 'now' ? 'py-6' : 'py-8'} ${view.name === 'coach' ? 'h-full min-h-0' : 'min-h-full'}`}
+            className={`mx-auto flex w-full max-w-[1760px] flex-col px-10 pt-12 pb-16 ${view.name === 'coach' ? 'h-full min-h-0' : 'min-h-full'}`}
           >
             {renderPage()}
           </div>
