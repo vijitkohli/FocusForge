@@ -11,7 +11,7 @@ import { UserProfile } from './components/UserProfile'
 import { queueStore } from './lib/queue'
 import { whatNextStore } from './lib/whatNextStore'
 import { MiniPlayer } from './shell/MiniPlayer'
-import { Sidebar } from './shell/Sidebar'
+import { Sidebar, TOGGLE_SIDEBAR_EVENT } from './shell/Sidebar'
 import type { FocusScope, NavigationProps, View } from './shell/navigation'
 
 function App(): JSX.Element {
@@ -106,6 +106,11 @@ function App(): JSX.Element {
           '3': { name: 'history' },
           ',': { name: 'profile' }
         }
+        if (event.key === 'b' || event.key === 'B') {
+          event.preventDefault()
+          window.dispatchEvent(new Event(TOGGLE_SIDEBAR_EVENT))
+          return
+        }
         const destination = destinations[event.key]
         if (destination) {
           event.preventDefault()
@@ -180,7 +185,7 @@ function App(): JSX.Element {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <main className="min-h-0 flex-1 overflow-y-auto">
           <div
-            className={`mx-auto flex w-full max-w-[1424px] flex-col px-8 ${view.name === 'now' ? 'py-6' : 'py-8'} ${view.name === 'coach' ? 'h-full min-h-0' : 'min-h-full'}`}
+            className={`mx-auto flex w-full max-w-[1760px] flex-col px-10 pt-12 pb-16 ${view.name === 'coach' ? 'h-full min-h-0' : 'min-h-full'}`}
           >
             {renderPage()}
           </div>

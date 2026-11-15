@@ -123,11 +123,6 @@ export function WhatNextCard({
   const aside = wn.result?.urgentAside
   const asideDays = aside ? dueDays(aside.input.due?.date ?? null, new Date()) : null
   const asideWhen = asideDays === 0 ? 'today' : asideDays === 1 ? 'tomorrow' : 'soon'
-  const urgentFirst =
-    !!wn.result?.pick?.urgent &&
-    (wn.chip === 'anything' || wn.chip === 'deadline') &&
-    !wn.userPicked &&
-    !wn.pinnedKey
 
   return (
     <section
@@ -158,13 +153,12 @@ export function WhatNextCard({
             queueFallback
               ? ''
               : wn.userPicked
-                ? 'You picked this one.'
-                : wn.reason || stale?.reason || ''
+                ? ''
+                : (wn.reason || stale?.reason || '').replace('You picked this one.', '')
           }
-          urgentFirst={urgentFirst}
           aside={
             aside && (wn.chip === 'different' || wn.chip === 'light')
-              ? `${aside.input.step.itemName ?? aside.input.step.projectId} is due ${asideWhen}. It'll be here when you want it.`
+              ? `${aside.input.step.itemName ?? aside.input.step.projectId} is due ${asideWhen}.`
               : null
           }
           onShowAside={() => whatNextStore.setChip('anything')}
@@ -202,7 +196,6 @@ function CardBody({
   item,
   stale,
   reason,
-  urgentFirst,
   aside,
   onShowAside,
   onOpen,
@@ -219,7 +212,6 @@ function CardBody({
   item: UpcomingSubtask | null
   stale: WhatNextSnapshot['lastKnown']
   reason: string
-  urgentFirst: boolean
   aside: string | null
   onShowAside: () => void
   onOpen: () => void
@@ -241,7 +233,6 @@ function CardBody({
   const carried = item?.scheduledDate && item.scheduledDate < localDateKey(new Date())
   return (
     <>
-      {urgentFirst && <p className="mb-3 text-sm text-fg-2">It’s due soon, so it’s up first.</p>}
       {aside && (
         <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-fg-2">
           <span>{aside}</span>
@@ -357,7 +348,7 @@ function CardEmpty({
       <EmptyState
         icon={Disc3}
         title="Nothing's due soon"
-        description="None of your active items has a deadline coming up. Pick another energy, or enjoy the space."
+        description="No deadlines coming up."
         action={<Button onClick={() => whatNextStore.setChip('anything')}>Show anything</Button>}
       />
     )
@@ -367,7 +358,7 @@ function CardEmpty({
       <EmptyState
         icon={Disc3}
         title="Nothing different left today"
-        description="You've worked on or skipped everything else today. A break counts too."
+        description="You've covered everything else today."
         action={
           <Button onClick={() => void whatNextStore.restoreSkips()}>Show skipped again</Button>
         }
@@ -379,7 +370,7 @@ function CardEmpty({
       <EmptyState
         icon={Disc3}
         title="No light steps right now"
-        description="Press Not this, then Too big, on any step to get a smaller one."
+        description="Use Too big on any step to get a smaller one."
         action={<Button onClick={() => whatNextStore.setChip('anything')}>Show anything</Button>}
       />
     )
@@ -389,7 +380,7 @@ function CardEmpty({
       <EmptyState
         icon={Disc3}
         title="That's everything for now"
-        description="You skipped the rest for today. They'll be back tomorrow."
+        description="The rest are back tomorrow."
         action={
           <Button onClick={() => void whatNextStore.restoreSkips()}>Show skipped again</Button>
         }
@@ -401,7 +392,7 @@ function CardEmpty({
       <EmptyState
         icon={Disc3}
         title="Nothing playing yet"
-        description="Want me to look through your folders for courses and projects? I only read names and dates."
+        description="I'll look at folder names and dates only."
         action={<Button onClick={() => onNavigate({ name: 'items' })}>Find your items</Button>}
       />
     )
@@ -411,7 +402,7 @@ function CardEmpty({
       <EmptyState
         icon={Disc3}
         title="Your next steps are waiting on the AI connection"
-        description="Background prep is paused until CLIProxyAPI is back. Anything you've already planned still works."
+        description="Paused until CLIProxyAPI is back. Planned steps still work."
         action={<Button onClick={() => onNavigate({ name: 'library' })}>Open Library</Button>}
       />
     )
@@ -422,7 +413,7 @@ function CardEmpty({
       <EmptyState
         icon={Disc3}
         title="Getting your next steps ready"
-        description="I'm reading your items. The first time takes a minute or two."
+        description="The first run takes a minute or two."
         action={
           <Button
             onClick={() =>

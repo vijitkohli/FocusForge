@@ -216,7 +216,7 @@ async function tabCheck(view) {
     // shadow DOM (e.g. a native picker button) where the app's ring can't reach.
     if (focus.tag !== 'BODY')
       assert.ok(
-        focus.visible && focus.outline !== 'none' && parseFloat(focus.width) >= 2,
+        focus.visible && focus.outline !== 'none' && parseFloat(focus.width) * 1.15 >= 1.99, // 2px ring; Chromium reports it divided by the 1.15 base zoom
         `${view} missing focus ring at Tab #${i + 1} of ${controls} ${JSON.stringify(focus)} (previous: ${JSON.stringify(previous)})`
       )
     previous = { label: focus.label, tag: focus.tag }
@@ -396,20 +396,23 @@ try {
   )
   console.log('Verified carried-over count and re-plan persistence (16 steps).')
   assert.ok((await bodyText()).includes('What next?'), 'what next card missing')
-  assert.ok(await evaluate(`!!document.querySelector('[aria-label="Energy"]')`), 'energy chips missing')
+  assert.ok(
+    await evaluate(`!!document.querySelector('[aria-label="Energy"]')`),
+    'energy chips missing'
+  )
   assert.ok(
     await evaluate(`!!document.querySelector('button[title="Not this (S)"]')`),
     'Not this missing'
   )
   await click('Not this')
-  await waitFor(`document.body.innerText.includes('Skipped. Want to say why?')`, 'skip reasons')
+  await waitFor(`document.body.innerText.includes('Why not this one?')`, 'skip reasons')
   await click('Bring it back')
-  assert.ok(!(await bodyText()).includes('Skipped. Want to say why?'), 'reasons row stayed open')
+  assert.ok(!(await bodyText()).includes('Why not this one?'), 'reasons row stayed open')
   const opened = await evaluate(`(() => {
     const el = [...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || '').startsWith('Options for'))
     if (!el) return false
     el.click()
-    return true
+    return el.getAttribute('aria-label').slice('Options for '.length)
   })()`)
   assert.ok(opened, 'up next options missing')
   await sleep(200)
@@ -421,7 +424,11 @@ try {
   })()`)
   assert.ok(played, 'Play this next missing')
   await sleep(200)
-  assert.ok((await bodyText()).includes('You picked this one.'), 'card ignored Play this next')
+  assert.equal(
+    (await evaluate(`document.querySelector('.now-title')?.textContent ?? ''`)).trim(),
+    opened,
+    'card ignored Play this next'
+  )
   await click('Low energy')
   assert.equal(
     await evaluate(

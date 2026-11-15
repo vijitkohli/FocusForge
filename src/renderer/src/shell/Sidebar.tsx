@@ -14,6 +14,8 @@ import type { NavigationProps, View } from './navigation'
 import { ProxyDot } from './ProxyDot'
 
 const COLLAPSED_KEY = 'focusforge.sidebar.collapsed'
+/** Cmd+B (App.tsx) dispatches this to toggle the sidebar. */
+export const TOGGLE_SIDEBAR_EVENT = 'focusforge:toggle-sidebar'
 const NARROW_QUERY = '(max-width: 1099px)'
 
 export interface SidebarProps extends Pick<NavigationProps, 'onNavigate'> {
@@ -43,6 +45,12 @@ export function Sidebar({ view, onNavigate }: SidebarProps): JSX.Element {
     update()
     query.addEventListener('change', update)
     return () => query.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    const toggle = (): void => setPreferredCollapsed((value) => !value)
+    window.addEventListener(TOGGLE_SIDEBAR_EVENT, toggle)
+    return () => window.removeEventListener(TOGGLE_SIDEBAR_EVENT, toggle)
   }, [])
 
   useEffect(() => {
