@@ -19,7 +19,7 @@ export function SkipReasons({
       aria-label="Why not that one?"
       className="motion-menu mt-3 flex flex-wrap items-center justify-center gap-2"
     >
-      <p className="text-sm text-fg-2">Skipped. Want to say why?</p>
+      <p className="text-sm text-fg-2">Why not this one?</p>
       <Button size="sm" variant="ghost" onClick={() => onReason('not-now')}>
         Not now
       </Button>
