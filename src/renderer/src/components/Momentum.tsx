@@ -82,9 +82,10 @@ function activityGrid(
 /** Four strengths of the theme's green (the "easy" colour) on the charcoal panel. */
 function cellClass(count: number): string {
   if (count <= 0) return 'bg-bg-3'
-  if (count === 1) return 'bg-accent/30'
-  if (count === 2) return 'bg-accent/60'
-  return 'bg-accent'
+  if (count === 1) return 'bg-easy/25'
+  if (count === 2) return 'bg-easy/45'
+  if (count <= 4) return 'bg-easy/70'
+  return 'bg-easy/90'
 }
 
 export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element {
@@ -214,7 +215,6 @@ export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element 
             </span>
           </>
         ) : null}
-      </div>
         <SegmentedControl
           label="Time frame"
           className="ml-auto"
@@ -229,6 +229,7 @@ export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element 
             }
           }}
         />
+      </div>
 
       {showPace && pace && <p className="mt-2 text-sm text-fg-2">{pace}</p>}
 
