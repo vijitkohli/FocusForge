@@ -5,34 +5,39 @@ import { localDateKey } from '../../../common/schedule'
 import { formatLocalDate } from '../lib/dates'
 import { paceSentence } from '../lib/pace'
 import { useQueue } from '../lib/queue'
-import { Button, Skeleton } from '../ui'
+import { Button, SegmentedControl, Skeleton } from '../ui'
 
 export interface MomentumProps {
-  weeks?: number
   /** Show how long steps take versus their estimates (History only). */
   showPace?: boolean
 }
 
-const MIN_WEEKS = 12
-const MAX_WEEKS = 53
-const CELL = 14
+type Range = '1m' | '3m' | '6m' | '1y'
+const RANGES: { value: Range; label: string; weeks: number }[] = [
+  { value: '1m', label: 'Month', weeks: 5 },
+  { value: '3m', label: '3 months', weeks: 13 },
+  { value: '6m', label: '6 months', weeks: 26 },
+  { value: '1y', label: 'Year', weeks: 53 }
+]
+const RANGE_KEY = 'focusforge.momentum.range'
 const GAP = 3
-const CELL_PITCH = CELL + GAP
-const MAX_CELL = 16
+const MIN_CELL = 6
+/** Row height cap: short ranges get wider cells rather than a very tall grid. */
+const MAX_CELL = 30
 
-/** Once the week cap is hit, grow cells (up to MAX_CELL) so the grid fills its panel. */
-function cellSize(width: number, weeks: number): number {
-  if (weeks < MAX_WEEKS) return CELL
-  return Math.max(CELL, Math.min(MAX_CELL, Math.floor((width + GAP) / weeks) - GAP))
+function readRange(): Range {
+  try {
+    const stored = window.localStorage.getItem(RANGE_KEY)
+    if (RANGES.some((r) => r.value === stored)) return stored as Range
+  } catch {
+    // Storage can be unavailable; fall back to the default.
+  }
+  return '3m'
 }
 
-function visibleWeeks(width: number, requested?: number): number {
-  const available = Math.max(MIN_WEEKS, Math.min(MAX_WEEKS, Math.floor(width / CELL_PITCH)))
-  const limit =
-    requested !== undefined && Number.isFinite(requested)
-      ? Math.max(MIN_WEEKS, Math.min(MAX_WEEKS, Math.floor(requested)))
-      : MAX_WEEKS
-  return Math.min(available, limit)
+/** Row height for the chosen range; columns always stretch to the full width (scrolls only below MIN_CELL). */
+function cellSize(width: number, weeks: number): number {
+  return Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor((width + GAP) / weeks) - GAP))
 }
 
 function addDays(date: Date, days: number): Date {
@@ -74,6 +79,7 @@ function activityGrid(
   return { cells, months, thisWeek }
 }
 
+/** Four strengths of the theme's green (the "easy" colour) on the charcoal panel. */
 function cellClass(count: number): string {
   if (count <= 0) return 'bg-bg-3'
   if (count === 1) return 'bg-accent/30'
@@ -81,11 +87,12 @@ function cellClass(count: number): string {
   return 'bg-accent'
 }
 
-export function Momentum({ weeks, showPace = false }: MomentumProps = {}): JSX.Element {
+export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element {
   const { all } = useQueue()
   const headingId = useId()
   const viewport = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(MIN_WEEKS * CELL_PITCH)
+  const [width, setWidth] = useState(13 * 17)
+  const [range, setRange] = useState<Range>(readRange)
   const [stats, setStats] = useState<ActivityStats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -141,13 +148,13 @@ export function Momentum({ weeks, showPace = false }: MomentumProps = {}): JSX.E
     }
   }, [all, showPace])
 
-  const count = visibleWeeks(width, weeks)
-  const cell = weeks === undefined ? cellSize(width, count) : CELL
-  const pitch = cell + GAP
+  const count = RANGES.find((r) => r.value === range)?.weeks ?? 13
+  const cell = cellSize(width, count)
+  const minWidth = count * (MIN_CELL + GAP) - GAP
   const gridStyle = {
     gridTemplateRows: `repeat(7, ${cell}px)`,
     gridAutoFlow: 'column' as const,
-    gridAutoColumns: `${cell}px`,
+    gridAutoColumns: 'minmax(0, 1fr)',
     gap: `${GAP}px`
   }
   const today = new Date()
@@ -185,7 +192,7 @@ export function Momentum({ weeks, showPace = false }: MomentumProps = {}): JSX.E
                   -day streak
                 </span>
               ) : (
-                'No streak yet. Finish one step to start one.'
+                'No streak yet'
               )}
             </span>
             {stats.longestStreak > 0 && (
@@ -208,6 +215,20 @@ export function Momentum({ weeks, showPace = false }: MomentumProps = {}): JSX.E
           </>
         ) : null}
       </div>
+        <SegmentedControl
+          label="Time frame"
+          className="ml-auto"
+          options={RANGES.map(({ value, label }) => ({ value, label }))}
+          value={range}
+          onChange={(next) => {
+            setRange(next)
+            try {
+              window.localStorage.setItem(RANGE_KEY, next)
+            } catch {
+              // The choice still applies for this session.
+            }
+          }}
+        />
 
       {showPace && pace && <p className="mt-2 text-sm text-fg-2">{pace}</p>}
 
@@ -243,10 +264,14 @@ export function Momentum({ weeks, showPace = false }: MomentumProps = {}): JSX.E
           tabIndex={0}
           className="min-w-0 flex-1 overflow-x-auto rounded-xs pb-1"
         >
-          <div style={{ width: count * pitch - GAP }}>
+          <div style={{ width: '100%', minWidth }}>
             <div aria-hidden="true" className="relative h-6 overflow-hidden text-[11px] text-fg-3">
               {months.map(({ column, label }) => (
-                <span key={column} className="absolute top-0" style={{ left: column * pitch }}>
+                <span
+                  key={column}
+                  className="absolute top-0"
+                  style={{ left: `${(column / count) * 100}%` }}
+                >
                   {label}
                 </span>
               ))}
@@ -254,7 +279,7 @@ export function Momentum({ weeks, showPace = false }: MomentumProps = {}): JSX.E
             <div className="grid" style={gridStyle} role="list" aria-label="Daily completed steps">
               {cells.map(({ key, count: completed, future }) => {
                 if (future) return <span key={key} aria-hidden="true" />
-                if (loading) return <Skeleton key={key} width={cell} height={cell} />
+                if (loading) return <Skeleton key={key} width="100%" height={cell} />
                 const label = `${formatLocalDate(key)} · ${completed} ${completed === 1 ? 'step' : 'steps'}`
                 return (
                   <span
