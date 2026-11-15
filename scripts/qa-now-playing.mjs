@@ -216,7 +216,7 @@ async function tabCheck(view) {
     // shadow DOM (e.g. a native picker button) where the app's ring can't reach.
     if (focus.tag !== 'BODY')
       assert.ok(
-        focus.visible && focus.outline !== 'none' && parseFloat(focus.width) >= 2,
+        focus.visible && focus.outline !== 'none' && parseFloat(focus.width) * 1.15 >= 1.99, // 2px ring; Chromium reports it divided by the 1.15 base zoom
         `${view} missing focus ring at Tab #${i + 1} of ${controls} ${JSON.stringify(focus)} (previous: ${JSON.stringify(previous)})`
       )
     previous = { label: focus.label, tag: focus.tag }

@@ -190,7 +190,7 @@ export async function connectCdp({ port, mainPort, output, log = () => '' }) {
         continue
       }
       assert.ok(
-        focus.visible && focus.outline !== 'none' && parseFloat(focus.width) >= 2,
+        focus.visible && focus.outline !== 'none' && parseFloat(focus.width) * 1.15 >= 1.99, // 2px ring; Chromium reports it divided by the 1.15 base zoom
         `${view} missing focus ring at Tab #${i + 1} ${JSON.stringify(focus)}`
       )
     }
