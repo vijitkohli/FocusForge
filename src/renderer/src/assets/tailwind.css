@@ -140,11 +140,22 @@ svg.lucide {
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
-.now-layout {
+.now-top {
   display: grid;
   align-items: start;
-  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
-  gap: 32px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+  gap: 24px;
+}
+/* Up next spans the full width; two columns once there is room. */
+.now-queue {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 40px;
+}
+@media (min-width: 1280px) {
+  .now-queue {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .now-panel {
   padding: 32px;
@@ -182,9 +193,8 @@ svg.lucide {
   animation: completed-title 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 @media (max-width: 1099px) {
-  .now-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.8fr);
-    gap: 24px;
+  .now-top {
+    grid-template-columns: minmax(0, 1fr);
   }
   .now-panel {
     padding: 24px;
@@ -196,9 +206,6 @@ svg.lucide {
 @media (max-width: 760px) {
   .page {
     padding: 24px 20px;
-  }
-  .now-layout {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 /* Responsive feedback only (plan §8): menu fade, drawer slide, streak tick.
