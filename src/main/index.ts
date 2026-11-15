@@ -537,11 +537,15 @@ function startPlanQueue(): void {
   })
 }
 
+/** Base UI scale (owner, 2026-11-15): everything 15% larger. Cmd+0 returns here. */
+const BASE_ZOOM = 1.15
+
 function createWindow(): void {
   // Create the browser window.
   const win = new BrowserWindow({
-    width: 900,
-    height: 670,
+    // 15% larger than the old 900x670 so the 1.15 base zoom keeps the same room.
+    width: 1036,
+    height: 770,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -561,9 +565,10 @@ function createWindow(): void {
   // set in a previous run sticks across restarts. With no app menu defined
   // (autoHideMenuBar), the standard Cmd+/Cmd- accelerators are never
   // registered either, so a stuck zoom can't be undone from the keyboard.
-  // Reset to 100% on every load and wire up working zoom shortcuts below.
+  // Reset to the base zoom on every load and wire up working zoom shortcuts below.
+  // The base is 115%: the whole UI reads 15% larger than its CSS pixels.
   win.webContents.on('did-finish-load', () => {
-    win.webContents.setZoomLevel(0)
+    win.webContents.setZoomFactor(BASE_ZOOM)
   })
 
   // Register zoom keybindings directly on the webContents (independent of any
@@ -581,7 +586,7 @@ function createWindow(): void {
       win.webContents.setZoomLevel(current - 0.5)
       event.preventDefault()
     } else if (input.key === '0') {
-      win.webContents.setZoomLevel(0)
+      win.webContents.setZoomFactor(BASE_ZOOM)
       event.preventDefault()
     }
   })
