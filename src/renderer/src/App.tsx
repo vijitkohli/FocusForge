@@ -11,7 +11,7 @@ import { UserProfile } from './components/UserProfile'
 import { queueStore } from './lib/queue'
 import { whatNextStore } from './lib/whatNextStore'
 import { MiniPlayer } from './shell/MiniPlayer'
-import { Sidebar } from './shell/Sidebar'
+import { Sidebar, TOGGLE_SIDEBAR_EVENT } from './shell/Sidebar'
 import type { FocusScope, NavigationProps, View } from './shell/navigation'
 
 function App(): JSX.Element {
@@ -105,6 +105,11 @@ function App(): JSX.Element {
           '2': { name: 'library' },
           '3': { name: 'history' },
           ',': { name: 'profile' }
+        }
+        if (event.key === 'b' || event.key === 'B') {
+          event.preventDefault()
+          window.dispatchEvent(new Event(TOGGLE_SIDEBAR_EVENT))
+          return
         }
         const destination = destinations[event.key]
         if (destination) {
