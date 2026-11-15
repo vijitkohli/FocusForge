@@ -123,11 +123,6 @@ export function WhatNextCard({
   const aside = wn.result?.urgentAside
   const asideDays = aside ? dueDays(aside.input.due?.date ?? null, new Date()) : null
   const asideWhen = asideDays === 0 ? 'today' : asideDays === 1 ? 'tomorrow' : 'soon'
-  const urgentFirst =
-    !!wn.result?.pick?.urgent &&
-    (wn.chip === 'anything' || wn.chip === 'deadline') &&
-    !wn.userPicked &&
-    !wn.pinnedKey
 
   return (
     <section
@@ -158,13 +153,12 @@ export function WhatNextCard({
             queueFallback
               ? ''
               : wn.userPicked
-                ? 'You picked this one.'
-                : wn.reason || stale?.reason || ''
+                ? ''
+                : (wn.reason || stale?.reason || '').replace('You picked this one.', '')
           }
-          urgentFirst={urgentFirst}
           aside={
             aside && (wn.chip === 'different' || wn.chip === 'light')
-              ? `${aside.input.step.itemName ?? aside.input.step.projectId} is due ${asideWhen}. It'll be here when you want it.`
+              ? `${aside.input.step.itemName ?? aside.input.step.projectId} is due ${asideWhen}.`
               : null
           }
           onShowAside={() => whatNextStore.setChip('anything')}
@@ -202,7 +196,6 @@ function CardBody({
   item,
   stale,
   reason,
-  urgentFirst,
   aside,
   onShowAside,
   onOpen,
@@ -219,7 +212,6 @@ function CardBody({
   item: UpcomingSubtask | null
   stale: WhatNextSnapshot['lastKnown']
   reason: string
-  urgentFirst: boolean
   aside: string | null
   onShowAside: () => void
   onOpen: () => void
@@ -241,7 +233,6 @@ function CardBody({
   const carried = item?.scheduledDate && item.scheduledDate < localDateKey(new Date())
   return (
     <>
-      {urgentFirst && <p className="mb-3 text-sm text-fg-2">It’s due soon, so it’s up first.</p>}
       {aside && (
         <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-fg-2">
           <span>{aside}</span>
