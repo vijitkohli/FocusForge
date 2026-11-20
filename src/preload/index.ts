@@ -13,6 +13,7 @@ import type { OutlineAssessment } from '../common/outline'
 import type { TodayPlan } from '../common/today'
 import type { ReaderStatus } from '../common/readers'
 import type { PlanStatusEvent } from '../common/milestones'
+import type { NowChatMessage, NowChatReply } from '../common/nowChat'
 import type { ProxyHealthView, SkipEvent, SkipReason } from '../common/whatNext'
 
 // Custom APIs for renderer
@@ -50,6 +51,8 @@ const api = {
     ipcRenderer.invoke('replan-task', projectId, taskId, request),
   syncItemTasks: (projectId: string) => ipcRenderer.invoke('sync-item-tasks', projectId),
   getNextSteps: () => ipcRenderer.invoke('get-next-steps'),
+  nowChat: (messages: NowChatMessage[]): Promise<NowChatReply> =>
+    ipcRenderer.invoke('now-chat', messages),
   getWhatNextSignals: () => ipcRenderer.invoke('get-what-next-signals'),
   recordSkip: (event: SkipEvent) => ipcRenderer.invoke('record-skip', event),
   updateSkipReason: (at: string, reason: SkipReason, undone?: boolean) =>

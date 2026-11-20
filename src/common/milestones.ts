@@ -416,3 +416,44 @@ export function markStepsDone(steps: Subtask[], ids: readonly string[]): Subtask
   const set = new Set(ids)
   return steps.map((s) => (set.has(s.id) && !s.isCompleted ? setSubtaskStatus(s, 'done') : s))
 }
+
+/**
+ * "Mark task done": every step and prerequisite done, and every milestone done,
+ * so the planner has nothing left to expand. Already-done items keep their dates.
+ */
+export function completeTask<T extends MilestoneTask & Pick<ProjectTask, 'prerequisites'>>(
+  t: T,
+  now = new Date()
+): T {
+  return {
+    ...t,
+    subtasks: t.subtasks.map((s) => (s.isCompleted ? s : setSubtaskStatus(s, 'done'))),
+    ...(t.prerequisites
+      ? { prerequisites: t.prerequisites.map((p) => ({ ...p, isCompleted: true })) }
+      : {}),
+    ...(t.milestones
+      ? {
+          milestones: t.milestones.map((m) =>
+            m.status === 'done' ? m : finish(m, stepsOf(t, m.id), now)
+          )
+        }
+      : {})
+  }
+}
+
+/**
+ * A planned task with nothing left: every step and prerequisite done, and every
+ * milestone done (a two-level plan with later parts still to write is not done).
+ */
+export function isTaskComplete(
+  t: Pick<ProjectTask, 'milestones' | 'subtasks' | 'prerequisites'>
+): boolean {
+  const steps = t.subtasks ?? []
+  const milestones = t.milestones ?? []
+  if (steps.length === 0 && milestones.length === 0) return false
+  return (
+    steps.every((s) => s.isCompleted) &&
+    (t.prerequisites ?? []).every((p) => p.isCompleted) &&
+    milestones.every((m) => m.status === 'done')
+  )
+}

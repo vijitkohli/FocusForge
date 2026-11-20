@@ -1,8 +1,6 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
-import { Flame } from 'lucide-react'
 import type { ActivityStats } from '../../../common/types'
 import { localDateKey } from '../../../common/schedule'
-import { formatLocalDate } from '../lib/dates'
 import { paceSentence } from '../lib/pace'
 import { useQueue } from '../lib/queue'
 import { Button, SegmentedControl, Skeleton } from '../ui'
@@ -81,11 +79,20 @@ function activityGrid(
 
 /** Four strengths of the theme's green (the "easy" colour) on the charcoal panel. */
 function cellClass(count: number): string {
-  if (count <= 0) return 'bg-bg-3'
-  if (count === 1) return 'bg-easy/25'
-  if (count === 2) return 'bg-easy/45'
-  if (count <= 4) return 'bg-easy/70'
-  return 'bg-easy/90'
+  if (count <= 0) return 'bg-bg-3 text-fg-2'
+  if (count === 1) return 'bg-easy/30 text-fg-1'
+  if (count <= 3) return 'bg-easy/55 text-fg-1'
+  if (count <= 5) return 'bg-easy/80 text-on-accent'
+  return 'bg-easy text-on-accent'
+}
+
+function tipText(key: string, count: number): string {
+  const day = new Date(`${key}T12:00:00`).toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'long'
+  })
+  if (count <= 0) return `No steps on ${day}`
+  return `${count} ${count === 1 ? 'step' : 'steps'} on ${day}`
 }
 
 export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element {
@@ -94,19 +101,12 @@ export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element 
   const viewport = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(13 * 17)
   const [range, setRange] = useState<Range>(readRange)
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null)
+  const tipHost = useRef<HTMLDivElement>(null)
   const [stats, setStats] = useState<ActivityStats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [pace, setPace] = useState<string | null>(null)
-  // The streak number ticks up (one short motion) only when it grows in place;
-  // tracked as state adjusted during render, React's pattern for prop changes.
-  const streak = stats?.currentStreak ?? null
-  const [seenStreak, setSeenStreak] = useState<number | null>(null)
-  const [ticked, setTicked] = useState(false)
-  if (streak !== null && streak !== seenStreak) {
-    setTicked(seenStreak !== null && streak > seenStreak)
-    setSeenStreak(streak)
-  }
 
   useEffect(() => {
     const element = viewport.current
@@ -152,6 +152,8 @@ export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element 
   const count = RANGES.find((r) => r.value === range)?.weeks ?? 13
   const cell = cellSize(width, count)
   const minWidth = count * (MIN_CELL + GAP) - GAP
+  /** Day numbers only fit on roomy cells (Month and 3 months on most windows). */
+  const showDates = cell >= 18 && (width + GAP) / count - GAP >= 22
   const gridStyle = {
     gridTemplateRows: `repeat(7, ${cell}px)`,
     gridAutoFlow: 'column' as const,
@@ -160,7 +162,7 @@ export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element 
   }
   const today = new Date()
   today.setHours(12, 0, 0, 0)
-  const { cells, months, thisWeek } = activityGrid(today, count, stats?.countsByDate ?? {})
+  const { cells, months } = activityGrid(today, count, stats?.countsByDate ?? {})
   const loading = !stats && !error
 
   const retry = (): void => {
@@ -178,43 +180,11 @@ export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element 
         <h2 id={headingId} className="section-title">
           Momentum
         </h2>
-        {stats ? (
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-2">
-            <span className="inline-flex items-center gap-1.5 text-fg-1">
-              <Flame size={18} className="text-accent" aria-hidden="true" />
-              {stats.currentStreak > 0 ? (
-                <span>
-                  <span
-                    key={stats.currentStreak}
-                    className={ticked ? 'streak-tick tabular-nums' : 'tabular-nums'}
-                  >
-                    {stats.currentStreak}
-                  </span>
-                  -day streak
-                </span>
-              ) : (
-                'No streak yet'
-              )}
-            </span>
-            {stats.longestStreak > 0 && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span className="tabular-nums">longest {stats.longestStreak}</span>
-              </>
-            )}
-            <span aria-hidden="true">·</span>
-            <span className="tabular-nums">{stats.totalCompleted} done</span>
-            <span aria-hidden="true">·</span>
-            <span className="tabular-nums">{thisWeek} this week</span>
-          </p>
-        ) : loading ? (
-          <>
-            <Skeleton width="min(100%, 340px)" height={18} />
-            <span className="sr-only" role="status">
-              Loading activity
-            </span>
-          </>
-        ) : null}
+        {loading && (
+          <span className="sr-only" role="status">
+            Loading activity
+          </span>
+        )}
         <SegmentedControl
           label="Time frame"
           className="ml-auto"
@@ -244,20 +214,11 @@ export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element 
         </div>
       )}
 
-      <div className="mt-4 flex min-w-0 gap-2">
-        <div
-          aria-hidden="true"
-          className="mt-6 grid shrink-0 text-[11px] text-fg-3"
-          style={{
-            gridTemplateRows: `repeat(7, ${cell}px)`,
-            gap: `${GAP}px`,
-            lineHeight: `${cell}px`
-          }}
-        >
-          <span style={{ gridRow: 1 }}>Mon</span>
-          <span style={{ gridRow: 3 }}>Wed</span>
-          <span style={{ gridRow: 5 }}>Fri</span>
-        </div>
+      <div
+        ref={tipHost}
+        className="relative mt-4 flex min-w-0 gap-2"
+        onMouseLeave={() => setTip(null)}
+      >
         <div
           ref={viewport}
           role="region"
@@ -281,20 +242,40 @@ export function Momentum({ showPace = false }: MomentumProps = {}): JSX.Element 
               {cells.map(({ key, count: completed, future }) => {
                 if (future) return <span key={key} aria-hidden="true" />
                 if (loading) return <Skeleton key={key} width="100%" height={cell} />
-                const label = `${formatLocalDate(key)} · ${completed} ${completed === 1 ? 'step' : 'steps'}`
+                const text = tipText(key, completed)
+                const show = (el: HTMLElement): void => {
+                  const host = tipHost.current?.getBoundingClientRect()
+                  const box = el.getBoundingClientRect()
+                  if (host)
+                    setTip({ text, x: box.left - host.left + box.width / 2, y: box.top - host.top })
+                }
                 return (
                   <span
                     key={key}
                     role="listitem"
-                    aria-label={label}
-                    title={label}
-                    className={`rounded-xs ${cellClass(completed)}`}
-                  />
+                    tabIndex={-1}
+                    aria-label={text}
+                    onMouseEnter={(e) => show(e.currentTarget)}
+                    onFocus={(e) => show(e.currentTarget)}
+                    onBlur={() => setTip(null)}
+                    className={`flex items-start justify-end overflow-hidden rounded-xs px-1 pt-0.5 text-[10px] leading-none tabular-nums ${cellClass(completed)}`}
+                  >
+                    {showDates && <span aria-hidden="true">{Number(key.slice(8, 10))}</span>}
+                  </span>
                 )
               })}
             </div>
           </div>
         </div>
+        {tip && (
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-xs bg-bg-4 px-2 py-1 text-xs text-fg-1 shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
+            style={{ left: tip.x, top: tip.y - 6 }}
+          >
+            {tip.text}
+          </div>
+        )}
       </div>
     </section>
   )

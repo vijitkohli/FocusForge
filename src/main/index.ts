@@ -22,6 +22,7 @@ import {
   outlineLedgerNote
 } from '../common/outline'
 import { localDateKey } from '../common/schedule'
+import { touchedLabel, type NowChatPick, type NowChatReply } from '../common/nowChat'
 import { TodayPlan } from '../common/today'
 import { WeeklyReview, reviewWeekDue, templateReview } from '../common/review'
 import { materialiseSeries, seriesTemplate, startSeries, stopSeries } from '../common/recurrence'
@@ -279,6 +280,7 @@ const CHAT_TIMEOUT_MS = 120_000
 const ADJUST_TIMEOUT_MS = 120_000
 const EXTRACT_TIMEOUT_MS = 180_000
 const SPLIT_TIMEOUT_MS = 60_000
+const NOWCHAT_TIMEOUT_MS = 60_000
 
 const COACH_TIMEOUT_MESSAGE =
   'The coach took too long to answer. Check that CLIProxyAPI is running, then send again.'
@@ -699,6 +701,98 @@ function createWindow(): void {
     return result
   })
   ipcMain.handle('get-next-steps', () => fsManager.getNextSteps())
+
+  // Now screen chat: picks ONE real step for the student's current state. The
+  // engine only sees a compact list of current steps (no folder contents), and
+  // a pick is returned only when it matches a listed step.
+  ipcMain.handle('now-chat', async (event, raw: unknown): Promise<NowChatReply> => {
+    const messages = (Array.isArray(raw) ? raw : [])
+      .filter(
+        (m): m is { role: 'user' | 'assistant'; content: string } =>
+          !!m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+      )
+      .slice(-20)
+      .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }))
+    const [steps, settings, userProfile, stats] = await Promise.all([
+      fsManager.getNextSteps(),
+      loadSettings(),
+      fsManager.readUserProfileForPrompt(),
+      fsManager.getActivityStats()
+    ])
+    const listed = steps
+      .filter((s) => !s.needsPlan && s.subtaskId && s.title)
+      .slice(0, 40)
+      .map((step, i) => ({ id: `s${i + 1}`, step }))
+    const call = engineCalls.track(
+      `nowchat:${event.sender.id}`,
+      runPythonWithStdin(
+        'main.py',
+        {
+          mode: 'nowchat',
+          model: settings.chatModel,
+          messages,
+          steps: listed.map(({ id, step }) => ({
+            id,
+            item: step.itemName ?? step.projectId,
+            kind: step.itemKind,
+            task: step.taskTitle,
+            step: step.title,
+            minutes: step.minutes,
+            difficulty: step.difficulty,
+            due: step.deadlineKind === 'none' ? undefined : step.deadline,
+            dueKind: step.deadlineKind,
+            touched: touchedLabel(step.lastTouchedAt)
+          })),
+          now: new Date().toLocaleString('en-AU', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          doneToday: stats.countsByDate[localDateKey(new Date())] ?? 0,
+          userProfile
+        },
+        NOWCHAT_TIMEOUT_MS
+      )
+    )
+    let response: EngineMessage
+    try {
+      response = await call.promise
+    } catch (err) {
+      if (err instanceof EngineCancelled) {
+        return { ok: false, cancelled: true, message: '', pick: null, replies: [] }
+      }
+      const message =
+        err instanceof EngineTimeout
+          ? 'The coach took too long. Check that CLIProxyAPI is running, then try again.'
+          : "Couldn't reach the coach. Check that CLIProxyAPI is running."
+      return { ok: false, message, pick: null, replies: [] }
+    }
+    if (response.status !== 'ok') {
+      return {
+        ok: false,
+        message: String(response.message || "The coach couldn't answer."),
+        pick: null,
+        replies: []
+      }
+    }
+    const hit = listed.find(({ id }) => id === response.pick)
+    const pick: NowChatPick | null =
+      hit && hit.step.subtaskId && hit.step.title
+        ? {
+            projectId: hit.step.projectId,
+            taskId: hit.step.taskId,
+            subtaskId: hit.step.subtaskId,
+            title: hit.step.title,
+            itemName: hit.step.itemName ?? hit.step.projectId
+          }
+        : null
+    const replies = Array.isArray(response.replies)
+      ? response.replies.filter((r): r is string => typeof r === 'string').slice(0, 3)
+      : []
+    return { ok: true, message: String(response.message ?? ''), pick, replies }
+  })
   ipcMain.handle('get-what-next-signals', () => whatNext.signals())
   ipcMain.handle('record-skip', (_event, raw: unknown) => whatNext.recordSkip(raw))
   ipcMain.handle('update-skip-reason', (_event, at: unknown, reason: unknown, undone?: boolean) =>

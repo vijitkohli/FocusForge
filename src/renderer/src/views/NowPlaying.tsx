@@ -7,10 +7,10 @@ import { whatNextStore, useWhatNext } from '../lib/whatNextStore'
 import { Button, EmptyState, Skeleton } from '../ui'
 import type { NavigationProps } from '../shell/navigation'
 import { Momentum } from '../components/Momentum'
-import { MoodFilter, CarriedOver } from '../components/QueueControls'
-import { TrackRow } from '../components/TrackRow'
+import { CarriedOver } from '../components/QueueControls'
 import { TodayPlan } from '../components/TodayPlan'
 import { WhatNextCard } from '../components/WhatNextCard'
+import { NowChat } from '../components/NowChat'
 import { useTodayPlan } from '../lib/todayPlan'
 
 export function NowPlaying({
@@ -104,7 +104,7 @@ export function NowPlaying({
     }
   }
   return (
-    <div className="flex w-full flex-col gap-8">
+    <div className="flex w-full flex-col gap-8 md:px-10">
       <h1 className="sr-only">Now</h1>
       {error && (
         <p role="alert" className="rounded-md bg-bg-2 p-3 text-hard">
@@ -128,57 +128,39 @@ export function NowPlaying({
       ) : (
         <>
           <div className="now-top">
-            <WhatNextCard
-              compact={compact}
-              hasProjects={hasProjects}
-              onNavigate={onNavigate}
-              onOpenProject={onOpenProject}
-              onPlay={play}
-              saving={saving}
-              onDone={() => void done()}
-            />
+            <div className="flex min-w-0 flex-col gap-6">
+              <WhatNextCard
+                compact={compact}
+                hasProjects={hasProjects}
+                onNavigate={onNavigate}
+                onOpenProject={onOpenProject}
+                onPlay={play}
+                saving={saving}
+                onDone={() => void done()}
+              />
+              <NowChat />
+              <div className="flex flex-col gap-4">
+                {!plan && !planningToday && queue.items.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    leadingIcon={Clock}
+                    className="self-start"
+                    onClick={() => setPlanningToday(true)}
+                  >
+                    Plan today
+                  </Button>
+                )}
+                <TodayPlan
+                  onOpen={(projectId, taskId) => onOpenProject(projectId, taskId)}
+                  formOpen={planningToday}
+                  onCloseForm={() => setPlanningToday(false)}
+                />
+                <CarriedOver />
+              </div>
+            </div>
             <Momentum />
           </div>
-          <section aria-labelledby="up-next-heading" className="min-w-0">
-            <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-3">
-              <h2 id="up-next-heading" className="section-title">
-                Up next
-              </h2>
-              <MoodFilter />
-              {!plan && !planningToday && queue.items.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  leadingIcon={Clock}
-                  className="ml-auto"
-                  onClick={() => setPlanningToday(true)}
-                >
-                  Plan today
-                </Button>
-              )}
-            </div>
-            <TodayPlan
-              onOpen={(projectId, taskId) => onOpenProject(projectId, taskId)}
-              formOpen={planningToday}
-              onCloseForm={() => setPlanningToday(false)}
-            />
-            {!plan && (
-              <div className="now-queue">
-                {queue.items.slice(1, 9).map((item, i) => (
-                  <TrackRow
-                    key={queueKey(item)}
-                    item={item}
-                    transitionName={i === 0 ? 'queue-0' : undefined}
-                    onOpen={() => onOpenProject(item.projectId, item.taskId)}
-                  />
-                ))}
-                {queue.items.length < 2 && (
-                  <p className="py-4 text-sm text-fg-3">Nothing else queued.</p>
-                )}
-              </div>
-            )}
-            <CarriedOver />
-          </section>
         </>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { ArrowLeft, NotebookText, Play, Repeat, Repeat1, Trash2 } from 'lucide-react'
+import { ArrowLeft, CheckCheck, NotebookText, Play, Repeat, Repeat1, Trash2 } from 'lucide-react'
 import type { ProjectTask } from 'src/common/types'
 import { deadlineLabel, parseLocalDate } from '../../lib/dates'
 import { Button, DateInput, Menu } from '../../ui'
@@ -18,6 +18,8 @@ interface TaskHeaderProps {
   onPlay: () => void
   onNotes: () => void
   onDelete: () => void
+  /** Marks every step, prerequisite and milestone done. */
+  onMarkDone: () => void
   onDeadline: (deadline: string) => void
   /** Whether this task belongs to an active weekly series. */
   repeating?: boolean
@@ -34,6 +36,7 @@ export function TaskHeader({
   onPlay,
   onNotes,
   onDelete,
+  onMarkDone,
   onDeadline,
   repeating = false,
   onRepeat,
@@ -52,6 +55,7 @@ export function TaskHeader({
   }, [editing, disabled])
   const items = [...task.subtasks, ...(task.prerequisites ?? [])]
   const done = items.filter((item) => item.isCompleted).length
+  const allDone = done === items.length && (task.milestones ?? []).every((m) => m.status === 'done')
   const twoLevel = hasMilestones(task)
   // Two-level plans measure the whole job in minutes, not just the steps written so far.
   const percent = twoLevel ? taskProgress(task) : items.length ? (done / items.length) * 100 : 0
@@ -125,14 +129,26 @@ export function TaskHeader({
         <h1 className="page-title min-w-0 flex-1 basis-64 [overflow-wrap:anywhere]">
           {task.title}
         </h1>
-        <Button
-          variant="primary"
-          leadingIcon={Play}
-          onClick={onPlay}
-          disabled={disabled || task.subtasks.every((step) => step.isCompleted)}
-        >
-          Play next step
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {!allDone && (
+            <Button
+              variant="secondary"
+              leadingIcon={CheckCheck}
+              onClick={onMarkDone}
+              disabled={disabled}
+            >
+              Mark task done
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            leadingIcon={Play}
+            onClick={onPlay}
+            disabled={disabled || task.subtasks.every((step) => step.isCompleted)}
+          >
+            Play next step
+          </Button>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-fg-2">
         {editing ? (
