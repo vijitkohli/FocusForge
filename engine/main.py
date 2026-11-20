@@ -1037,6 +1037,9 @@ if __name__ == "__main__":
         elif payload.get("mode") in ("plan", "expand", "replan"):
             from planner import handle_plan_mode
             emit(handle_plan_mode(payload))
+        elif payload.get("mode") == "nowchat":
+            from nowchat import handle_now_chat
+            emit(handle_now_chat(payload))
         elif payload.get("stream"):
             handle_chat_turn_streaming(payload, emit)
         else:
