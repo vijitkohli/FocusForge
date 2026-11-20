@@ -137,7 +137,10 @@ async function nav(name) {
   const result = await evaluate(
     `(() => { const el = [...document.querySelectorAll('aside button')].find(e => e.textContent.trim() === ${JSON.stringify(text)} || (e.getAttribute('aria-label') || '').startsWith(${JSON.stringify(text)})); if (!el) return false; el.click(); return true })()`
   )
-  assert.ok(result, `Navigation not found: ${name}`)
+  if (!result) {
+    const shown = (await bodyText()).replace(/\s+/g, ' ').slice(0, 240)
+    assert.fail(`Navigation not found: ${name} (screen shows: ${shown})`)
+  }
   await sleep(350)
 }
 async function screenshot(name, width, height) {
@@ -160,10 +163,11 @@ async function screenshot(name, width, height) {
   )
   if (name === 'focus') {
     const center = await evaluate(
-      `(() => {const r=document.querySelector('#focus-title').closest('section').getBoundingClientRect();return {x:r.x,w:r.width,viewport:innerWidth}})()`
+      // Measure against the scroll container's visible width: a scrollbar appears when a long step title overflows.
+      `(() => {const s=document.querySelector('#focus-title').closest('section');const r=s.getBoundingClientRect();const p=s.parentElement.closest('.overflow-y-auto')||document.documentElement;const pr=p.getBoundingClientRect();return {x:r.x,w:r.width,viewport:innerWidth,mid:pr.left+p.clientWidth/2}})()`
     )
     assert.ok(
-      Math.abs(center.x + center.w / 2 - center.viewport / 2) < 2,
+      Math.abs(center.x + center.w / 2 - center.mid) < 2,
       `Focus not centered: ${JSON.stringify(center)}`
     )
   }
@@ -371,10 +375,9 @@ try {
   await both('now-playing')
   await tabCheck('now')
   const carried = await evaluate('document.body.innerText')
-  assert.ok(
-    carried.includes('Carried over') && carried.includes('(16)'),
-    '16 carried-over fixture steps missing'
-  )
+  // The copied real data may carry its own steps over, so expect at least the 16 planted.
+  const carriedCount = Number(/Carried over\s*\((\d+)\)/.exec(carried)?.[1] ?? 0)
+  assert.ok(carriedCount >= 16, `16 carried-over fixture steps missing (saw ${carriedCount})`)
   assert.ok(!/\d+d overdue/.test(carried), 'Overdue guilt badge rendered')
   const heatmap = await evaluate(
     `(() => {const e=document.querySelector('[aria-label="Daily completed steps"]');const s=getComputedStyle(e);return {rows:s.gridTemplateRows,flow:s.gridAutoFlow,gap:s.gap,cells:e.children.length}})()`
@@ -384,7 +387,9 @@ try {
   assert.ok(heatmap.cells >= 84)
   await click('Re-plan all from today')
   assert.ok(
-    (await evaluate('document.body.innerText')).includes('Moved 16 steps into the days ahead.')
+    (await evaluate('document.body.innerText')).includes(
+      `Moved ${carriedCount} steps into the days ahead.`
+    )
   )
   const planned = await evaluate(`window.api.loadProjectData(${JSON.stringify(ids.projectId)})`)
   const today = await evaluate(
@@ -408,36 +413,46 @@ try {
   await waitFor(`document.body.innerText.includes('Why not this one?')`, 'skip reasons')
   await click('Bring it back')
   assert.ok(!(await bodyText()).includes('Why not this one?'), 'reasons row stayed open')
-  const opened = await evaluate(`(() => {
-    const el = [...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || '').startsWith('Options for'))
-    if (!el) return false
-    el.click()
-    return el.getAttribute('aria-label').slice('Options for '.length)
+  // Chat: stub the coach (no model call) so a reply picks a known step, and
+  // check the pick lands in the What next card rather than a second player.
+  const pickTarget = await evaluate(`(async () => {
+    const s = (await window.api.getNextSteps()).find((x) => x.subtaskId && x.title && !x.needsPlan)
+    return s ? { projectId: s.projectId, taskId: s.taskId, subtaskId: s.subtaskId, title: s.title, itemName: s.itemName || s.projectId } : null
   })()`)
-  assert.ok(opened, 'up next options missing')
-  await sleep(200)
-  const played = await evaluate(`(() => {
-    const el = [...document.querySelectorAll('[role="menuitem"]')].find(e => e.textContent.includes('Play this next'))
-    if (!el) return false
-    el.click()
+  assert.ok(pickTarget, 'no next step for the chat to pick')
+  await mainEvaluate(`(() => {
+    const { ipcMain } = process.getBuiltinModule('module').createRequire(process.cwd() + '/')('electron')
+    ipcMain.removeHandler('now-chat')
+    ipcMain.handle('now-chat', async () => ({ ok: true, message: 'Try this one for 15 minutes.', pick: ${JSON.stringify(pickTarget)}, replies: ['Something else'] }))
     return true
   })()`)
-  assert.ok(played, 'Play this next missing')
-  await sleep(200)
+  assert.ok((await bodyText()).includes('Not sure what to do?'), 'chat missing')
+  assert.ok(!(await bodyText()).includes('Up next'), 'Up next should be gone from Now')
+  // A conversation saved earlier today hides the starter replies; clear it first.
+  await evaluate(`(() => {
+    const b = [...document.querySelectorAll('section[aria-labelledby="now-chat-heading"] button')].find((e) => e.textContent.trim() === 'Clear')
+    if (b) b.click()
+    return true
+  })()`)
+  await sleep(150)
+  await click('Pick for me')
+  await waitFor(`document.body.innerText.includes('Try this one for 15 minutes.')`, 'chat reply')
+  await sleep(300)
   assert.equal(
     (await evaluate(`document.querySelector('.now-title')?.textContent ?? ''`)).trim(),
-    opened,
-    'card ignored Play this next'
+    pickTarget.title,
+    'chat pick did not update the What next card'
   )
-  await click('Low energy')
+  assert.ok((await bodyText()).includes('Something else'), 'chat quick replies missing')
+  await click('Light')
   assert.equal(
     await evaluate(
       `document.querySelector('[aria-label="Energy"] [aria-checked="true"]')?.textContent?.trim()`
     ),
     'Light'
   )
-  await click('All')
-  console.log('Verified the what next card, Not this, Play this next and the Light chip.')
+  await click('Anything')
+  console.log('Verified the what next card, Not this, the chat pick and the Light chip.')
   await click('Start in Focus (Space)')
   await both('focus')
   await screenshot('focus', 2056, 1257)
@@ -547,9 +562,9 @@ try {
     )
   )
   await nav('now')
-  await click('Low energy')
+  await click('Light')
   assert.ok((await evaluate('document.body.innerText')).includes('Easy'))
-  await click('All')
+  await click('Anything')
 
   // ---------- Extended interaction coverage ----------
   const localKey = (offset = 0) =>
@@ -563,7 +578,7 @@ try {
     ['2', 'Digit2', 'New item'],
     ['3', 'Digit3', 'Coming up'],
     [',', 'Comma', 'What gets in your way'],
-    ['1', 'Digit1', 'Up next']
+    ['1', 'Digit1', 'Not sure what to do?']
   ]) {
     await key(k, code, 4)
     await sleep(300)
@@ -573,16 +588,18 @@ try {
 
   // Menu keyboard model: ArrowDown opens on the first item, arrows move, Escape
   // closes and returns focus to the trigger; an outside press also closes it.
+  // (Up next left Now, so this runs on the Library card menu.)
+  await nav('library')
   await evaluate(`document.querySelector('main button[aria-label^="Options for"]').focus()`)
   await key('ArrowDown')
   assert.equal(
     await evaluate(
       `document.activeElement.getAttribute('role') + ':' + document.activeElement.textContent.trim()`
     ),
-    'menuitem:Play this next'
+    'menuitem:Pause'
   )
   await key('ArrowDown')
-  assert.equal(await evaluate(`document.activeElement.textContent.trim()`), 'Open task')
+  assert.equal(await evaluate(`document.activeElement.textContent.trim()`), 'Archive')
   await key('Escape')
   assert.ok(!(await evaluate(`!!document.querySelector('[role="menu"]')`)), 'Escape left menu open')
   assert.ok(
