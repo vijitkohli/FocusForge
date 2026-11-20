@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type JSX } from 'react'
 import {
   AlertCircle,
   ArrowLeft,
+  Check,
+  ChevronRight,
   FileText,
   ListMusic,
   MessageSquare,
@@ -12,6 +14,7 @@ import {
 import { localDateKey } from 'src/common/schedule'
 import type { ProjectData, ProjectTask } from 'src/common/types'
 import { isUnplanned } from 'src/common/outline'
+import { isTaskComplete } from 'src/common/milestones'
 import { formatLocalDate } from '../lib/dates'
 import { queueStore } from '../lib/queue'
 import type { NavigationProps } from '../shell/navigation'
@@ -108,6 +111,73 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
     0
   )
   const name = data?.name || projectId.replace(/_/g, ' ')
+  const completed = tasks.filter(isTaskComplete)
+  const active = tasks.filter((task) => !isTaskComplete(task))
+
+  /** One task row; completed rows show a tick instead of a number. */
+  const row = (task: ProjectTask, number: string | null): JSX.Element => {
+    const steps = task.subtasks ?? []
+    return (
+      <li
+        key={task.id}
+        className="flex items-center gap-3 border-b border-line px-3 py-2.5 hover:bg-bg-2"
+      >
+        <button
+          className="grid min-w-0 flex-1 grid-cols-[32px_minmax(0,1fr)_64px_100px] items-center gap-3 text-left"
+          onClick={() => onOpenProject(projectId, task.id)}
+        >
+          {number ? (
+            <span className="text-sm tabular-nums text-fg-2">{number}</span>
+          ) : (
+            <Check size={16} strokeWidth={1.75} aria-label="Done" className="text-fg-3" />
+          )}
+          <span
+            className={`truncate text-[15px] leading-[1.35] font-[550] ${number ? '' : 'text-fg-2'}`}
+          >
+            {task.title}
+          </span>
+          {isUnplanned(task) ? (
+            <span className="text-[12.5px] text-fg-3">Not planned</span>
+          ) : (
+            <span className="text-[12.5px] tabular-nums text-fg-2">
+              {steps.filter((step) => step.isCompleted).length} / {steps.length}
+            </span>
+          )}
+          <span className="text-[12.5px] text-fg-2">
+            {formatLocalDate(task.deadline) || 'No deadline'}
+          </span>
+        </button>
+        <Menu
+          label={`Options for ${task.title}`}
+          disabled={!!deleting}
+          items={[
+            ...(isUnplanned(task)
+              ? [
+                  {
+                    id: 'plan',
+                    label: 'Plan with coach',
+                    icon: MessageSquare,
+                    onSelect: () =>
+                      onNavigate({
+                        name: 'coach',
+                        projectId,
+                        planTaskId: task.id
+                      })
+                  }
+                ]
+              : []),
+            {
+              id: 'delete',
+              label: 'Delete task',
+              icon: Trash2,
+              danger: true,
+              onSelect: () => void remove(task)
+            }
+          ]}
+        />
+      </li>
+    )
+  }
 
   return (
     <div className="h-full overflow-y-auto">
@@ -168,7 +238,8 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
                     {name}
                   </h1>
                   <p className="text-sm text-fg-2">
-                    {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} · {stepsLeft} steps left
+                    {active.length} {active.length === 1 ? 'task' : 'tasks'} · {stepsLeft}{' '}
+                    {stepsLeft === 1 ? 'step' : 'steps'} left
                     {lastActive && ` · last active ${lastActive}`}
                   </p>
                   <SyncStatus itemId={projectId} />
@@ -204,74 +275,33 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
                   }
                 />
               ) : (
-                <section aria-label="Tasks in creation order">
-                  <div className="grid grid-cols-[32px_minmax(0,1fr)_64px_100px_32px] gap-3 border-b border-line px-3 py-2 text-[12.5px] text-fg-3">
-                    <span>#</span>
-                    <span>Task</span>
-                    <span>Steps</span>
-                    <span>Due</span>
-                    <span className="sr-only">Options</span>
-                  </div>
-                  <ol>
-                    {tasks.map((task, index) => {
-                      const steps = task.subtasks ?? []
-                      return (
-                        <li
-                          key={task.id}
-                          className="flex items-center gap-3 border-b border-line px-3 py-2.5 hover:bg-bg-2"
-                        >
-                          <button
-                            className="grid min-w-0 flex-1 grid-cols-[32px_minmax(0,1fr)_64px_100px] items-center gap-3 text-left"
-                            onClick={() => onOpenProject(projectId, task.id)}
-                          >
-                            <span className="text-sm tabular-nums text-fg-2">{index + 1}</span>
-                            <span className="truncate text-[15px] leading-[1.35] font-[550]">
-                              {task.title}
-                            </span>
-                            {isUnplanned(task) ? (
-                              <span className="text-[12.5px] text-fg-3">Not planned</span>
-                            ) : (
-                              <span className="text-[12.5px] tabular-nums text-fg-2">
-                                {steps.filter((step) => step.isCompleted).length} / {steps.length}
-                              </span>
-                            )}
-                            <span className="text-[12.5px] text-fg-2">
-                              {formatLocalDate(task.deadline) || 'No deadline'}
-                            </span>
-                          </button>
-                          <Menu
-                            label={`Options for ${task.title}`}
-                            disabled={!!deleting}
-                            items={[
-                              ...(isUnplanned(task)
-                                ? [
-                                    {
-                                      id: 'plan',
-                                      label: 'Plan with coach',
-                                      icon: MessageSquare,
-                                      onSelect: () =>
-                                        onNavigate({
-                                          name: 'coach',
-                                          projectId,
-                                          planTaskId: task.id
-                                        })
-                                    }
-                                  ]
-                                : []),
-                              {
-                                id: 'delete',
-                                label: 'Delete task',
-                                icon: Trash2,
-                                danger: true,
-                                onSelect: () => void remove(task)
-                              }
-                            ]}
-                          />
-                        </li>
-                      )
-                    })}
-                  </ol>
-                </section>
+                <>
+                  {active.length > 0 ? (
+                    <section aria-label="Tasks in creation order">
+                      <TaskListHead />
+                      <ol>{active.map((task, index) => row(task, String(index + 1)))}</ol>
+                    </section>
+                  ) : (
+                    <p className="text-sm text-fg-2">Every task here is done.</p>
+                  )}
+                  {completed.length > 0 && (
+                    <details className="group">
+                      <summary className="flex w-fit cursor-pointer list-none items-center gap-2 rounded-xs py-1 text-sm text-fg-2 hover:text-fg-1 [&::-webkit-details-marker]:hidden">
+                        <ChevronRight
+                          size={16}
+                          strokeWidth={1.75}
+                          aria-hidden="true"
+                          className="text-fg-3 transition-transform group-open:rotate-90"
+                        />
+                        Completed
+                        <span className="tabular-nums text-fg-3">{completed.length}</span>
+                      </summary>
+                      <ol className="mt-2 border-t border-line">
+                        {completed.map((task) => row(task, null))}
+                      </ol>
+                    </details>
+                  )}
+                </>
               )}
             </>
           )
@@ -296,6 +326,18 @@ function ProjectPage({ projectId, onNavigate, onOpenProject }: ProjectProps): JS
           setRetry((value) => value + 1)
         }}
       />
+    </div>
+  )
+}
+
+function TaskListHead(): JSX.Element {
+  return (
+    <div className="grid grid-cols-[32px_minmax(0,1fr)_64px_100px_32px] gap-3 border-b border-line px-3 py-2 text-[12.5px] text-fg-3">
+      <span>#</span>
+      <span>Task</span>
+      <span>Steps</span>
+      <span>Due</span>
+      <span className="sr-only">Options</span>
     </div>
   )
 }
