@@ -3,7 +3,9 @@ import type { Milestone, ProjectTask, Subtask } from './types'
 import {
   appendExpansion,
   applyAdvance,
+  completeTask,
   currentMilestone,
+  isTaskComplete,
   milestoneMinutes,
   nextPlanAction,
   nextStepForTask,
@@ -248,5 +250,55 @@ describe('milestones', () => {
     expect(g.earlier.map((s) => s.id)).toEqual(['a'])
     expect(g.unassigned.map((s) => s.id)).toEqual(['c', 'd'])
     expect(visibleSteps(task(undefined, [step('x', undefined)])).current).toHaveLength(1)
+  })
+})
+
+describe('completeTask', () => {
+  it('marks every step, prerequisite and milestone done and keeps earlier dates', () => {
+    const now = new Date('2026-11-19T05:00:00.000Z')
+    const t = {
+      ...task(
+        [
+          ms('a', 'done', 60, { completedAt: '2026-11-05T00:00:00.000Z' }),
+          ms('b', 'active'),
+          ms('c', 'todo')
+        ],
+        [step('s1', 'a', true), step('s2', 'b'), step('s3', 'b', false, { status: 'doing' })]
+      ),
+      prerequisites: [{ id: 'p1', title: 'Install', isCompleted: false }]
+    }
+    const done = completeTask(t, now)
+    expect(done.subtasks.every((s) => s.isCompleted && s.status === 'done' && s.completedAt)).toBe(
+      true
+    )
+    expect(done.subtasks[0].completedAt).toBe('2026-11-10T01:00:00.000Z')
+    expect(done.prerequisites?.[0].isCompleted).toBe(true)
+    expect(done.milestones?.map((m) => m.status)).toEqual(['done', 'done', 'done'])
+    expect(done.milestones?.[0].completedAt).toBe('2026-11-05T00:00:00.000Z')
+    expect(done.milestones?.[2].completedAt).toBe(now.toISOString())
+    expect(currentMilestone(done)).toBeNull()
+  })
+
+  it('works on a flat task with no milestones', () => {
+    const done = completeTask(task(undefined, [step('s1', undefined)]))
+    expect(done.milestones).toBeUndefined()
+    expect(done.subtasks[0].isCompleted).toBe(true)
+  })
+})
+
+describe('isTaskComplete', () => {
+  it('needs every step, prerequisite and milestone done', () => {
+    expect(isTaskComplete(task(undefined, []))).toBe(false)
+    expect(isTaskComplete(task(undefined, [step('s1', undefined, true)]))).toBe(true)
+    expect(
+      isTaskComplete(task([ms('a', 'done'), ms('b', 'active')], [step('s1', 'a', true)]))
+    ).toBe(false)
+    expect(
+      isTaskComplete({
+        ...task(undefined, [step('s1', undefined, true)]),
+        prerequisites: [{ id: 'p', title: 'p', isCompleted: false }]
+      })
+    ).toBe(false)
+    expect(isTaskComplete(completeTask(task([ms('a', 'active')], [step('s1', 'a')])))).toBe(true)
   })
 })

@@ -119,6 +119,7 @@ describe('task page sections', () => {
         onPlay: noop,
         onNotes: noop,
         onDelete: noop,
+        onMarkDone: noop,
         onDeadline: noop
       })
     )
@@ -128,6 +129,7 @@ describe('task page sections', () => {
     expect(markup).toContain('Past due date')
     expect(markup).not.toContain('Overdue')
     expect(markup).toContain('Play next step')
+    expect(markup).toContain('Mark task done')
     expect(markup).toContain('Task options')
     expect(markup).toContain('COMP6991')
   })
@@ -144,12 +146,14 @@ describe('task page sections', () => {
         onPlay: noop,
         onNotes: noop,
         onDelete: noop,
+        onMarkDone: noop,
         onDeadline: noop
       })
     )
     expect(markup).toContain('disabled=""')
     expect(markup).toContain('Saving…')
     expect(markup).toContain('3 / 3 done')
+    expect(markup).not.toContain('Mark task done')
   })
 
   it('uses plan numbering, canonical doing state, checkbox, and neutral done styling', () => {

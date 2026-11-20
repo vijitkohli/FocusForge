@@ -18,6 +18,7 @@ import type { NavigationProps } from '../../shell/navigation'
 import { queueStore } from '../../lib/queue'
 import { Button, EmptyState, Input, SegmentedControl, Skeleton } from '../../ui'
 import {
+  completeTask,
   currentMilestone,
   hasMilestones,
   redistributeMilestones,
@@ -444,6 +445,14 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
     })
   }
 
+  const markTaskDone = (): void => {
+    if (!task || writing.current) return
+    save("Couldn't mark this task done.", (current) => completeTask(current), {
+      section: 'Milestones & Completed Work',
+      note: `Marked the whole task "${task.title}" done.`
+    })
+  }
+
   const setRepeat = async (weekday: number | null, until = ''): Promise<void> => {
     const result = await window.api.setRecurrence(projectId, taskId, weekday, until)
     if (!result.success) throw new Error(result.error || "Couldn't save the weekly repeat.")
@@ -500,6 +509,7 @@ function CurrentTask({ projectId, taskId, onNavigate, onOpenFocus }: TaskPagePro
               onPlay={() => onOpenFocus({ scope: 'task', projectId, taskId })}
               onNotes={() => setNotesOpen(true)}
               onDelete={deleteTask}
+              onMarkDone={markTaskDone}
               onDeadline={deadlineChange}
               repeating={!!series?.recurrence}
               onRepeat={() => setRepeatOpen(true)}
