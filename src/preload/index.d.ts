@@ -15,6 +15,7 @@ import {
   SplitStepResult
 } from '../common/types'
 import { AppSettings } from '../common/models'
+import type { NowChatMessage, NowChatReply } from '../common/nowChat'
 import type { PlanStatusEvent, PlanTaskResult } from '../common/milestones'
 import type { ItemNextStep } from '../common/nextSteps'
 
@@ -61,6 +62,7 @@ declare global {
         projectId: string
       ) => Promise<{ added: number; updated: number; error?: string }>
       getNextSteps: () => Promise<ItemNextStep[]>
+      nowChat: (messages: NowChatMessage[]) => Promise<NowChatReply>
       getWhatNextSignals: () => Promise<WhatNextSignals>
       recordSkip: (event: SkipEvent) => Promise<boolean>
       updateSkipReason: (at: string, reason: SkipReason, undone?: boolean) => Promise<void>
